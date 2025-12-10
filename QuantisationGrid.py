@@ -106,48 +106,48 @@ class Grid(set):
 # series  — arithmetic progression  (superCollider)
 
     @classmethod
-    def series(cls, start, step, length: int):
+    def series(cls, start, step, size: int):
         """
         Arithmetic series: start, start+step, ... for `length` elements.
         """
-        if length < 0:
+        if size < 0:
             raise ValueError("length must be >= 0")
 
-        data = (start + i * step for i in range(length))
+        data = (start + i * step for i in range(size))
         return cls(data)
 
 ####################################################################################################
 # geom  — geometric progression  (superCollider)
 
-    def geom(cls, start, ratio, length: int):
+    def geom(cls, start, ratio, size: int):
         """
         Geometric series: start * ratio^i for `length` elements.
 
         Note: if ratio == 1, it's just a constant series.
         """
-        if length < 0:
-            raise ValueError("length must be >= 0")
+        if size < 0:
+            raise ValueError("size must be >= 0")
 
-        data = (start * (ratio ** i) for i in range(length))
+        data = (start * (ratio ** i) for i in range(size))
         return cls(data)
 
 ####################################################################################################
 # interpolation  — linear interpolation between endpoints (superCollider)
 
     @classmethod
-    def interpolation(cls, start, end, length: int):
+    def interpolation(cls, start, end, size: int):
         """
         `length` points linearly spaced between `start` and `end`.
 
         If length == 1, returns {start}.
         """
-        if length <= 0:
+        if size <= 0:
             raise ValueError("length must be > 0")
-        if length == 1:
+        if size == 1:
             return cls([start])
 
-        step = (end - start) / (length - 1)
-        data = (start + i * step for i in range(length))
+        step = (end - start) / (size - 1)
+        data = (start + i * step for i in range(size))
         return cls(data)
 
 ####################################################################################################
@@ -176,20 +176,20 @@ class Grid(set):
 # fib  — Fibonacci-like sequence
 
     @classmethod
-    def fib(cls, length: int, a=0, b=1):
+    def fib(cls, size: int, a=0, b=1):
         """
         Fibonacci-style sequence of `length` elements.
         Start values are a, b.
         """
-        if length < 0:
+        if size < 0:
             raise ValueError("length must be >= 0")
-        if length == 0:
+        if size == 0:
             return cls()
-        if length == 1:
+        if size == 1:
             return cls([a])
 
         values = [a, b]
-        for _ in range(length - 2):
+        for _ in range(size - 2):
             values.append(values[-1] + values[-2])
 
         return cls(values)

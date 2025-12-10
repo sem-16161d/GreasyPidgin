@@ -1,16 +1,5 @@
-from .QuantisationGrid import Grid
-
-class TimeGrid(Grid):
-    """
-    Time quantisation grid in *beats*, with helpers for seconds.
-
-    - Internally everything is stored in beats (float).
-    - You can access per-subdivision grids via `self.grids[subdivision]`.
-    - The TimeGrid instance itself is a Grid over the union of all points.
-    """
-
+from QuantisationGrid import Grid
 import warnings
-from .QuantisationGrid import Grid
 
 class TimeGrid(Grid):
     def __init__(
@@ -106,20 +95,15 @@ class TimeGrid(Grid):
         if subdiv <= 0:
             raise ValueError("subdiv must be a positive integer")
 
-        points = []
-        # we treat beats from 0 up to durationBeats (inclusive-ish)
-        # number of slots per beat: subdiv
-        # total number of beats: durationBeats
-        # we step in fractions of 1/subdiv
         step = 1.0 / subdiv
-        current = 0.0
-        # use a small epsilon to include the last beat
-        eps = 1e-9
-        while current <= self.durationBeats + eps:
-            points.append(current)
-            current += step
 
-        return Grid(points)
+        # we want all multiples of `step` from 0 up to durationBeats (inclusive-ish)
+        # i.e. k * step  for k = 0 .. floor((durationBeats + eps) / step)
+        eps = 1e-9
+        max_k = int((self.durationBeats + eps) / step)
+        size = max_k + 1  # because k runs 0..max_k
+
+        return Grid.series(start=0.0, step=step, size=size)
 
     # ------------------------------------------------------------------
     # time conversion helpers
@@ -186,62 +170,3 @@ class TimeGrid(Grid):
         beat_raw = self.sec_to_beat(sec)
         beat_q = self.quantize_beat(beat_raw, subdivision=subdivision)
         return self.beat_to_sec(beat_q)
-
-    # ------------------------------------------------------------------
-    # constructor to build a complex grid from simple ones
-    # ------------------------------------------------------------------
-    @classmethod
-    def from_simple_grids(cls, grids, bpm: float):
-        """
-        Build a TimeGrid by combining several simple grids.
-
-        `grids` can be:
-            - a dict{subdivision: Grid or iterable_of_beats}, or
-            - any iterable of Grid/iterable; in that case subdivision is
-              ignored and we just union everything.
-
-        The TimeGrid's duration is set to cover the max beat of all grids.
-        """
-        # Normalise to dict[int, Grid]
-        if isinstance(grids, dict):
-            norm = {}
-            all_points = set()
-            for subdiv, g in grids.items():
-                g_grid = Grid(g) if not isinstance(g, Grid) else g
-                norm[int(subdiv)] = g_grid
-                all_points.update(g_grid)
-        else:
-            # just an iterable of grids/iterables
-            norm = {}
-            all_points = set()
-            for idx, g in enumerate(grids, start=1):
-                g_grid = Grid(g) if not isinstance(g, Grid) else g
-                norm[idx] = g_grid
-                all_points.update(g_grid)
-
-        if not all_points:
-            # empty TimeGrid
-            tg = cls(durationSec=0.0, durationBeats=0.0, bpm=bpm, possibleSubdivision=[])
-            return tg
-
-        max_beat = max(all_points)
-        duration_beats = float(max_beat)
-        duration_sec = duration_beats * 60.0 / bpm
-
-        possible_subdivisions = sorted(norm.keys())
-
-        # create instance with correct meta info but don't build grids yet
-        obj = cls(
-            durationSec=duration_sec,
-            durationBeats=duration_beats,
-            bpm=bpm,
-            possibleSubdivision=possible_subdivisions,
-        )
-
-        # override the auto-built grids with our provided ones
-        obj.grids = norm
-        obj.clear()
-        for g in norm.values():
-            obj.update(g)
-
-        return obj
