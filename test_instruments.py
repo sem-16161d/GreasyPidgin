@@ -1,7 +1,7 @@
 import pytest
 
-from GreasyPidgin.Instrument import Instrument
-from GreasyPidgin.Instruments import (
+from .Instrument import Instrument
+from .Instruments import (
     STANDARD_INSTRUMENTS,
     get_standard_instrument,
 )

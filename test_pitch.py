@@ -1,5 +1,5 @@
 import pytest
-from GreasyPidgin.Pitch import note2midi
+from .Pitch import note2midi
 
 
 # -------------------------------

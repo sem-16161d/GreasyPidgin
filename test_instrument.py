@@ -2,7 +2,7 @@ import sys
 import pytest
 from pathlib import Path
 
-from GreasyPidgin.Instrument import Instrument
+from .Instrument import Instrument
 
 ROOT = Path(__file__).resolve().parents[1]  # go up one level
 sys.path.insert(0, str(ROOT))
