@@ -94,6 +94,52 @@ class PitchGrid(Grid):
 
         # Wrap in PitchGrid
         return cls(g, name=name)
+    
+    
+    @classmethod
+    def fromChurchModes(cls, mode, root, min_midi, max_midi, name=None):
+        """
+        Construct a PitchGrid from a church mode defined in SCALE_MASKS_12TET.
+
+        Parameters
+        ----------
+        mode : str
+            Name of the mode, e.g. 'ionian', 'dorian', 'phrygian', ...
+        root : int | float | str
+            Root as MIDI number or note name string ('c4', 'bf3', ...).
+        min_midi, max_midi : int | float
+            Inclusive MIDI boundaries for the grid.
+        name : str | None
+            Optional name for the PitchGrid. If None, the mode name is used.
+        """
+        mode_key = str(mode).lower()
+        try:
+            pcs = SCALE_MASKS_12TET[mode_key]
+        except KeyError as exc:
+            raise KeyError(f"Unknown church mode: {mode!r}") from exc
+
+        # reuse your from_pitch_classes constructor
+        return cls.from_pitch_classes(
+            pcs=pcs,
+            root=root,
+            min_midi=min_midi,
+            max_midi=max_midi,
+            name=name or mode_key,
+        )
+
+    @classmethod
+    def from_sruti_raga(cls, raga_name, root, min_midi, max_midi, name=None):
+        """
+        Construct a PitchGrid from a 22-Śruti raga mask (e.g. 'abhogi')
+        and a root (MIDI or note name).
+        """
+        pcs = get_sruti_mask(raga_name)
+        return cls.from_pitch_classes(pcs, root=root,
+                                    min_midi=min_midi,
+                                    max_midi=max_midi,
+                                    name=name or raga_name)
+    
+
 
 # ---------------------------------------------------------------------------
 # Pitch-class libraries
@@ -129,8 +175,8 @@ HISTORICAL_EUROPEAN_TUNINGS = {
     # Each entry: list of 12 pitch classes in semitones relative to tonic.
     # These are *deviations* from 12-TET (or direct semitone positions),
     # e.g. for C-based scale: [0.0, something, ..., < 12.0]
-    "werckmeisterIII": [ 0.0, 0.9, 1.92, 2.94, 3.9, 4.98, 5.88, 6.96, 7.92, 8.88, 9.96, 10.92 ],
-    "kirnbergerIII": [ 0.0, 0.9, 2.03, 2.94, 3.86, 4.98, 5.9, 7.01, 7.92, 8.84, 9.96, 10.88 ],
+    "werckmeister3": [ 0.0, 0.9, 1.92, 2.94, 3.9, 4.98, 5.88, 6.96, 7.92, 8.88, 9.96, 10.92 ],
+    "kirnberger3": [ 0.0, 0.9, 2.03, 2.94, 3.86, 4.98, 5.9, 7.01, 7.92, 8.84, 9.96, 10.88 ],
     "meantoneQuarterComma": [ 0.0, 0.76, 1.93, 3.1, 3.86, 5.03, 5.79, 6.96, 7.72, 8.89, 10.06, 10.82 ]
 }
 
@@ -154,6 +200,11 @@ SCALE_MASKS_22SRUTI = {
                ("Sa", "Ri2", "Ga2", "Ma1", "Dha2")]
 }
 
+def get_sruti_mask(raga_name: str):
+        try:
+            return SCALE_MASKS_22SRUTI[raga_name]
+        except KeyError as exc:
+            raise KeyError(f"Unknown 22-Śruti raga mask: {raga_name!r}") from exc
 
 def get_system_pitch_classes(system: str):
     """
