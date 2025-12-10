@@ -118,7 +118,7 @@ class Grid(set):
 
 ####################################################################################################
 # geom  — geometric progression  (superCollider)
-
+    @classmethod
     def geom(cls, start, ratio, size: int):
         """
         Geometric series: start * ratio^i for `length` elements.
