@@ -10,7 +10,7 @@ class TimeGrid:
         added to the grid.
         """
         if possibleSubdivision is None:
-            possibleSubdivision = [3, 5, 7, 8]
+            possibleSubdivision = [1]
 
         self.durationSec = float(durationSec)
         self.bpm = float(bpm)
@@ -101,61 +101,3 @@ class TimeGrid:
 
         # return closest slot
         return min(self.grid, key=lambda x: abs(x - beatRaw))
-
-    def single_subdivision(cls, durationSec, bpm, subdivision):
-        """
-        Convenience constructor: create a grid that uses exactly ONE
-        subdivision value (e.g. only quintuplets, only septuplets, etc.).
-
-        Example:
-            g5 = TimeGrid.single_subdivision(4.0, 120, 5)  # 4 sec @ 120 BPM, 5-tuplets
-        """
-        return cls(
-            durationSec=durationSec,
-            bpm=bpm,
-            possibleSubdivision=[int(subdivision)],
-        )
-
-    def combine(cls, grids):
-        """
-        Combine several TimeGrid instances into a single complex grid.
-
-        All grids must have the same BPM. The resulting grid's duration
-        is set so that it covers the full extent of all input grids.
-
-        Usage:
-            g5 = TimeGrid.single_subdivision(4.0, 120, 5)
-            g7 = TimeGrid.single_subdivision(4.0, 120, 7)
-            g8 = TimeGrid.single_subdivision(4.0, 120, 8)
-
-            g_complex = TimeGrid.combine([g5, g7, g8])
-
-        g_complex.grid will contain the UNION of all beat positions
-        from g5, g7, and g8.
-        """
-        grids = list(grids)
-        if not grids:
-            raise ValueError("TimeGrid.combine: need at least one grid")
-
-        # all BPMs must match
-        bpm0 = grids[0].bpm
-        for g in grids:
-            if g.bpm != bpm0:
-                raise ValueError(
-                    f"TimeGrid.combine: all grids must have the same BPM "
-                    f"(got {bpm0} and {g.bpm})"
-                )
-
-        # combined duration = max end-beat * beatDurationSec
-        # we estimate end-beat as max(grid)
-        max_beat = max(max(g.grid) for g in grids if g.grid)
-        beatDurationSec = 60.0 / bpm0
-        durationSec = max_beat * beatDurationSec
-
-        # create an "empty" grid object and then overwrite its grid
-        combined = cls(durationSec=durationSec, bpm=bpm0, possibleSubdivision=[])
-        combined.grid = set()
-        for g in grids:
-            combined.grid.update(g.grid)
-
-        return combined
