@@ -1,2 +1,1 @@
-<img width="660" height="420" alt="greasy pidgin logo" src="https://github.com/user-attachments/assets/04d4ff82-468d-433b-9159-087494e78964" />
-![Uploading greasy pidgin logo2.png…]()
+<img width="560" height="420" alt="greasy pidgin logo2" src="https://github.com/user-attachments/assets/0ff9b44c-f311-404b-a63a-6e9846f1809a" />
