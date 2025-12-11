@@ -1,4 +1,4 @@
-from QuantisationGrid import Grid
+from .QuantisationGrid import Grid
 import warnings
 
 class TimeGrid(Grid):
@@ -161,7 +161,7 @@ class TimeGrid(Grid):
         else:
             grid = self  # the union grid
 
-        return grid.closest(float(beat))
+        return grid.quantise(float(beat))
 
     def quantize_sec(self, sec: float, subdivision: int | None = None):
         """
