@@ -1,0 +1,122 @@
+Metadata-Version: 2.4
+Name: GreasyPidgin
+Version: 0.1.0
+Summary: Algorithmic composition toolkit inspired by slippery chicken
+Author-email: Sem Ribeiro Albuquerque Wendt <sem@16161d.net>
+License: MIT
+Project-URL: Homepage, https://github.com/sem-16161d/GreasyPidgin
+Requires-Python: >=3.10
+Description-Content-Type: text/markdown
+Requires-Dist: numpy
+Requires-Dist: matplotlib
+Requires-Dist: musicscore
+Requires-Dist: mido
+
+```text
+
+         ,--.
+        ( @° \
+       <´,..·_\
+         )_.-'/`·,
+        /-'``     `·,
+       |  GREASY   0)`·-___
+        \ PIDGIN  0) 0)0 );)`--,__
+         \,    _:0) 0)0_);;):;)-->>
+           "-,   ,--´
+              \,/
+            ,_//
+           ,_-'-,
+
+```
+
+Deutsche Version unter: https://gitea.com/sem-16161d/GreasyPidgin/src/branch/main/TUTORIAL/DE/installation.md
+
+# What is GreasyPidgin?
+
+Greasy Pidgin is an implementation of various algorithmic composition principles. The name refers to the groundbreaking algorithmic toolkit by Michael Edwards 'slippery chicken'. The wordplay on Pigeon - Pidgin refers to 'pidgin languages' - languages that come into existence when people that do not share a common native language come together and form a new language based on their contact language. As I am galumphing through a myriad of programming languages over the years I found little gems - and obstacles - in each environment which led me to this project: Trying to implement everything I love from each environment and unify it in a system that is tailored to my creative and compositional needs.
+
+# Getting started
+
+## Install python
+
+Go to https://www.python.org/downloads and install the latest version of conda according to the given instructions
+
+## Optional: Installing miniconda
+
+Why? Sometimes Python can behave unpredictable and different projects (especially older ones, that are not updated any more) might require different version of python. By using a local environment you can ensure that GreasyPidgin will always work – and all your other projects as well.
+
+Go to https://www.anaconda.com/docs/getting-started/miniconda/install/overview and install miniconda
+
+open a terminal (windows: power shell) and create a new environment in Python 3.14 with the name *greasypidgin*
+
+```{code-cell} bash
+conda create --name greasypidgin python=3.14
+```
+
+then run
+
+```{code-cell} bash
+conda activate greasypidgin
+```
+to activate it.
+
+## Installing GreasyPidgin
+1. Download this repository: click **Code -> Download ZIP**, unzip it where you want to keep it, e.g. university or music theory folder
+2. Open a terminal and go to the directory where you unzipped the repository using
+
+```{code-cell} bash
+cd path/to/directory/of/GreasyPidgin
+```
+
+3. To install GreasyPidgin run:
+
+```{code-cell} bash
+pip install -e .
+```
+
+4. To test if the installation worked, open Python in the Terminal with
+
+```{code-cell} bash
+python3
+```
+
+or
+
+```{code-cell} bash
+python
+```
+
+Then run in the Python shell:
+
+
+```{code-cell} python
+from GreasyPidgin.GreasyPidgin import GreasyPidgin
+print(GreasyPidgin())
+```
+
+The result should be:
+
+```{code-cell} python
+
+         ,--.
+        ( @° \
+       <´,..·_\
+         )_.-'/`·,
+        /-'``     `·,
+       |  GREASY   0)`·-___
+        \ PIDGIN  0) 0)0 );)`--,__
+         \,    _:0) 0)0_);;):;)-->>
+           "-,   ,--´
+              \,/
+            ,_//
+           ,_-'-,
+
+
+            
+   name     : GreasyPidgin
+   id       : 0
+   start    : 0.000
+   dur      : 0.000
+   ensemble : Ensemble(players=0, names=[], 
+   tmpObjs  : 0
+```
