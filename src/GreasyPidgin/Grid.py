@@ -1,7 +1,4 @@
 import random
-import numbers
-from signal import siginterrupt
-
 
 class Grid(set):
     """A grid is just a specialized set with optional helper methods."""
