@@ -7,10 +7,13 @@ License: MIT
 Project-URL: Homepage, https://github.com/sem-16161d/GreasyPidgin
 Requires-Python: >=3.10
 Description-Content-Type: text/markdown
+License-File: LICENSE
 Requires-Dist: numpy
 Requires-Dist: matplotlib
 Requires-Dist: musicscore
 Requires-Dist: mido
+Requires-Dist: python-osc
+Dynamic: license-file
 
 ```text
 

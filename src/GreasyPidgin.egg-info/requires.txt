@@ -2,4 +2,4 @@ numpy
 matplotlib
 musicscore
 mido
-pythonosc
+python-osc

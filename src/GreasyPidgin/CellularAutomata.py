@@ -336,3 +336,47 @@ class CellularAutomaton:
             f"(0 → {lastKey})\n"
             f")"
         )
+
+def intToBinary(n: int, size: int = -1) -> list[int]:
+        """
+        Convert an integer to a list of binary digits (MSB first).
+ 
+        Parameters
+        ----------
+        n : int
+            The integer to convert. Must be >= 0.
+        size : int
+            Pad to this many digits. -1 = minimum required width.
+ 
+        Examples
+        --------
+        >>> CellularAutomaton.intToBinary(6)
+        [1, 1, 0]
+        >>> CellularAutomaton.intToBinary(6, size=8)
+        [0, 0, 0, 0, 0, 1, 1, 0]
+        """
+        if n < 0:
+            raise ValueError(f"intToBinary: n must be >= 0, got {n}")
+        if size > 0:
+            return [int(b) for b in format(n, f"0{size}b")]
+        return [int(b) for b in format(n, "b")] if n > 0 else [0]
+
+def binaryToInt(bits: list[int]) -> int:
+        """
+        Convert a list of binary digits (MSB first) to an integer.
+
+        The inverse of intToBinary.
+
+        Examples
+        --------
+        >>> CellularAutomaton.binaryToInt([1, 1, 0])
+        6
+        >>> CellularAutomaton.binaryToInt([0, 0, 0, 0, 0, 1, 1, 0])
+        6
+        >>> CellularAutomaton.binaryToInt([0])
+        0
+        """
+        result = 0
+        for bit in bits:
+            result = result * 2 + int(bit)
+        return result

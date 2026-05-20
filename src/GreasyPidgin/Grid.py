@@ -248,7 +248,25 @@ class Grid(set):
 
         return cls(values)
 
+    def differentiate(self, copyFirst = False) -> list:
+        """
+        Return the deltas between consecutive sorted elements.
+        by default it assume the first elem to be 0 (delta of first element with itself)
+        to use the original SuperCollider-differentiate behaviours, set copyFirst = True
 
+        Example
+        -------
+        >>> Grid([3, 7, 10, 15]).differentiate()
+        [0, 4, 3, 5]
+        """
+        srt    = self.sorted()
+        if copyFirst:
+            result = [srt[0]]
+        else:
+            result = [0]
+        for i in range(1, len(srt)):
+            result.append(srt[i] - srt[i - 1])
+        return result
 
     def __repr__(self):
         size = len(self)
