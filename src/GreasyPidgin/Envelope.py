@@ -1,6 +1,6 @@
 import numpy as np
 from collections import Counter
-
+import matplotlib.pyplot as plt
 from GreasyPidgin.Normalisation import normaliseValues
 
 class Envelope:
@@ -301,7 +301,7 @@ class Envelope:
     # Display
     # -------------------------------------------------------------
     def display(self, use_normalized=False, show_polynomials=False, showReduced = False):
-        import matplotlib.pyplot as plt
+        
 
         if not self.points:
             raise ValueError("Envelope.display: empty envelope")
