@@ -11,6 +11,7 @@ Python adaptation:
 last updated: 08.12.2025
 """
 
+
 import math
 import re
 
@@ -119,3 +120,14 @@ def mtof(midi: float, referenceA4: float = 440.0) -> float:
         raise ValueError(f"a4 must be > 0, got {referenceA4!r}")
 
     return ref * (2.0 ** ((m - 69.0) / 12.0))
+
+def forceIntoRangeMidi(value, lo, hi,*, maxIter = 10):
+    if maxIter > 0:
+        out = value
+        if value < lo:
+            out= forceIntoRangeMidi(value + 12, lo, hi, maxIter=  maxIter-1)
+        elif value > hi:
+            out= forceIntoRangeMidi(value - 12, lo, hi,maxIter=  maxIter-1)
+        return out
+    else:
+        raise RuntimeError(f"forceIntoRangeMidi: cannot find a solution for {value} higher than {lo} and lower than {hi}")

@@ -40,7 +40,7 @@ Example
 """
 
 from .Grid import Grid
-from .Pitch import mtof
+from .Pitch import mtof, forceIntoRangeMidi
 from .TuningSystemAndScaleMask import (
     TuningSystem, ScaleMask, TUNING_SYSTEMS,
     _toMidi, _circDist,
@@ -242,6 +242,7 @@ class PitchGrid(Grid):
         referenceAHz: float = 440.0,
         possibleSystems: list[str] | None = None,
         possibleMasks: list[str] | None = None,
+        possibleScaleRoots: list[float | str] | None = None,
         applyMask: bool = True,
     ) -> "PitchGrid":
         """
@@ -256,20 +257,31 @@ class PitchGrid(Grid):
             Reference pitches as MIDI floats or SPN strings.
         lowestPitch, highestPitch : float | str
             Register for the output grid.
+        pitchUnit : str
         referenceAHz : float
         possibleSystems : list[str] | None
             Restrict search. None = all systems.
         possibleMasks : list[str] | None
             Restrict search. None = all masks per system.
+        possibleScaleRoots : list[float | str] | None
+            If set, the best-matching scale root from this list is used
+            when building the output grid. Accepts the same pitchUnit as
+            the rest of the constructor. None = no scaleRoot applied.
         applyMask : bool
             If False, return full TuningSystem grid without mask.
         """
         if not targetPitch:
             raise ValueError("PitchGrid.fromCorrelation: targetPitch is empty")
 
-        low     = _toMidi(lowestPitch,  referenceAHz, pitchUnit)
-        high    = _toMidi(highestPitch, referenceAHz, pitchUnit)
+        low      = _toMidi(lowestPitch,  referenceAHz, pitchUnit)
+        high     = _toMidi(highestPitch, referenceAHz, pitchUnit)
         tgtPitch = [_toMidi(p, referenceAHz, pitchUnit) for p in targetPitch]
+
+        # convert possibleScaleRoots to MIDI using the same pitchUnit
+        scaleRootsMidi: list[float] | None = None
+        if possibleScaleRoots is not None:
+            scaleRootsMidi = [_toMidi(r, referenceAHz, pitchUnit)
+                              for r in possibleScaleRoots]
 
         systemNames = possibleSystems or list(TUNING_SYSTEMS.keys())
         candidates: list[tuple[str, str]] = [
@@ -314,8 +326,31 @@ class PitchGrid(Grid):
             raise ValueError("PitchGrid.fromCorrelation: no match found")
 
         _, bestTSName, bestMaskName = best
+
+        # find best scale root if candidates were provided
+        bestScaleRoot: float | None = None
+        if scaleRootsMidi is not None and applyMask:
+            ts       = TUNING_SYSTEMS[bestTSName]
+            interval = ts.repeatIntervalSemitones or 12.0
+            tgtNorm  = pcNorm(tgtPitch, interval)
+            bestRootErr = float("inf")
+            for rootMidi in scaleRootsMidi:
+                pg  = cls.fromMask(bestTSName, bestMaskName, low, high,
+                                   scaleRoot=rootMidi,
+                                   pitchUnit='midi',
+                                   referenceAHz=referenceAHz)
+                pcs = sorted(set(round(m % interval, 6) for m in pg))
+                if not pcs:
+                    continue
+                err = error(tgtNorm, pcs, interval)
+                if err < bestRootErr:
+                    bestRootErr   = err
+                    bestScaleRoot = rootMidi
+
         if applyMask:
             return cls.fromMask(bestTSName, bestMaskName, low, high,
+                                scaleRoot=bestScaleRoot,
+                                pitchUnit='midi',
                                 referenceAHz=referenceAHz)
         return cls.fromTuningSystem(bestTSName, low, high,
                                     referenceAHz=referenceAHz)
@@ -451,6 +486,107 @@ class PitchGrid(Grid):
         container.export(MidiExporter(path, pitchBendRange=pitchBendRange,
                                       trackName=name))
         return path
+
+    def makeChordFromTopNote(
+        self,
+        topNote: float | str,
+        primaryIntervals: list[int] = [1, 7, 9],
+        numPrimaryNotes: int = 4,
+        numMaxNotes: int = 8,
+        clusterChance: float = 0.1,
+        minPitch: float | str = 48.0,
+        clusterIntervals: list[float] = [-2, -1, 1, 2],
+        *,
+        pitchUnit: str = 'midi',
+        referenceAHz: float = 440.0,
+    ) -> list:
+        """
+        Build a chord downward from a top note using this PitchGrid as a sieve.
+
+        Returns a list of pitches in *pitchUnit*, ready to pass directly
+        to a Phonon constructor.
+
+        Algorithm
+        ---------
+        1. Starting from *topNote*, walk downward by random intervals from
+           *primaryIntervals*, quantising each candidate to the grid.
+           No range enforcement during construction.
+        2. For each primary note, with probability *clusterChance*, add a
+           neighbour offset by a random value from *clusterIntervals*
+           (quantised and different from the primary note itself).
+        3. Force all pitches into [minPitch, topNote] via octave shifts
+           before returning.
+        4. Return *topNote* guaranteed first, followed by a random sample
+           of the remaining notes up to *numMaxNotes* total, all converted
+           back to *pitchUnit*.
+
+        Parameters
+        ----------
+        topNote : float | str
+            Highest note of the chord. Interpreted according to pitchUnit.
+        primaryIntervals : list[int]
+            Semitone intervals to step downward from each primary note.
+        numPrimaryNotes : int
+            Number of primary notes to generate below the top note.
+        numMaxNotes : int
+            Maximum total notes in the chord (including topNote).
+        clusterChance : float
+            Probability [0, 1] that each primary note gets a cluster neighbour.
+        minPitch : float | str
+            Lowest allowed pitch. Interpreted according to pitchUnit.
+        clusterIntervals : list[float]
+            Offsets (in semitones) to try for cluster neighbours.
+            Default [-2, -1, 1, 2] for standard chromatic clusters.
+            Use smaller values for microtonal systems, e.g. [-0.5, 0.5].
+        pitchUnit : str
+            Unit for all pitch inputs and outputs: 'midi' (default), 'hz', 'spn'.
+        referenceAHz : float
+            Physical A4 — used for Hz / SPN conversion.
+
+        Returns
+        -------
+        list — pitches in pitchUnit, topNote first.
+        """
+        from random import choice, random, sample
+
+        # convert all inputs to MIDI — internal arithmetic stays in MIDI
+        topMidi = _toMidi(topNote,  referenceAHz, pitchUnit)
+        loMidi  = _toMidi(minPitch, referenceAHz, pitchUnit)
+
+        # --- step 1: primary notes (no range enforcement here) ---
+        primaryChord = [topMidi]
+        for _ in range(numPrimaryNotes):
+            candidate = primaryChord[-1] - choice(primaryIntervals)
+            primaryChord.append(self.quantise(candidate))
+        primaryChord = primaryChord[1:]
+
+        # --- step 2: cluster notes ---
+        clusterNotes = []
+        for pm in primaryChord:
+            if random() < clusterChance:
+                candidates         = [pm + iv for iv in clusterIntervals]
+                candidatesQ        = set(self.quantise(c) for c in candidates)
+                candidatesFiltered = list(candidatesQ - {pm})
+                if candidatesFiltered:
+                    clusterNotes.append(choice(candidatesFiltered))
+
+        # --- step 3: force into range before output ---
+        potentialPitches = [
+            forceIntoRangeMidi(p, loMidi, topMidi)
+            for p in primaryChord + clusterNotes
+        ]
+
+        # --- step 4: assemble and convert back to pitchUnit ---
+        n          = min(numMaxNotes - 1, len(potentialPitches))
+        chosenMidi = [topMidi] + (sample(potentialPitches, n) if n > 0 else [])
+
+        if pitchUnit == 'hz':
+            return [mtof(m, referenceAHz) for m in chosenMidi]
+        elif pitchUnit == 'spn':
+            from .Pitch import mtospn
+            return [mtospn(m) for m in chosenMidi]
+        else:
+            return chosenMidi
 
     def parseMidi(self, path: str = "/tmp/", pitchBendRange: int = 4096) -> str:
         """Legacy alias for toMidi()."""

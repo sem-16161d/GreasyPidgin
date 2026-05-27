@@ -29,6 +29,7 @@ tg.analyseExternalStartTimesSec(starts)
 
 from random import randint, random
 from math import ceil
+from GreasyPidgin.LSystem import LSystem, ProductionRules, ProductionRule
 
 from .Grid import Grid
 
@@ -319,6 +320,538 @@ class TimeGrid(Grid):
             startTimeSec=startTimeSec,
             bpm=bpm,
             ticksPerBeat=ticksPerBeat,
+        )
+
+    @classmethod
+    def RQQfromLSystem(
+        cls,
+        rqqs: list,
+        productionRules: list,
+        numIterations: int = 5,
+        *,
+        axiom: list | None = None,
+        startTimeSec: float = 0.0,
+        bpm: float = 60.0,
+        ticksPerBeat: int = 480,
+        durationsCutoffBeats: float | None = None,
+        cutoffMode: str = 'start',
+    ) -> "TimeGrid":
+        """
+        Build a TimeGrid from an integer L-System, translating the final
+        generation into RQQ objects via an index palette.
+
+        The L-System works entirely with integers (clean, fast, hashable).
+        After iteration, each integer is mapped to the corresponding RQQ
+        in *rqqs* by index.
+
+        Parameters
+        ----------
+        rqqs : list[RQQ]
+            Palette of RQQ objects. Index 0 = rqqs[0], etc.
+        productionRules : list[list]
+            Index-based rules: [[predecessor, [successor0, successor1, ...]], ...]
+            e.g. [[0, [0,1]], [1, [2,1,2]], [2, [0]]]
+        numIterations : int
+            Number of L-System iterations.
+        axiom : list[int] | None
+            Starting symbol sequence. None = [0].
+        startTimeSec : float
+        bpm : float
+        ticksPerBeat : int
+        durationsCutoffBeats : float | None
+            If set, only this many beats of the sequence are kept.
+        cutoffMode : str
+            'start'  — first N beats (default)
+            'end'    — last N beats
+            'middle' — middle N beats
+
+        Example
+        -------
+        >>> r1 = RQQ(0.5, [1, 1])
+        >>> r2 = RQQ(1,   [1, 1, 1])
+        >>> r3 = RQQ(1.5, [1, 1, 1, 1])
+        >>> tg = TimeGrid.RQQfromLSystem(
+        ...     rqqs            = [r1, r2, r3],
+        ...     productionRules = [[0, [0,1]], [1, [2,1,2]], [2, [0]]],
+        ...     numIterations   = 5,
+        ...     axiom           = [0],
+        ...     bpm             = 90,
+        ...     durationsCutoffBeats = 16,
+        ...     cutoffMode      = 'end',
+        ... )
+        """
+        from GreasyPidgin.LSystem import LSystem, ProductionRules, ProductionRule
+
+        # build integer L-System
+        intRules = ProductionRules([
+            ProductionRule(predIdx, succIndices)
+            for predIdx, succIndices in productionRules
+        ])
+        intAxiom = axiom if axiom is not None else [0]
+        lind     = LSystem(intAxiom, intRules)
+        lind.iterate(numIterations)
+
+        # translate integer generation → RQQ sequence
+        generation   = lind.currentGeneration()
+        print('currentGen: ', generation)
+        rqqSequence  = [rqqs[i] for i in generation if 0 <= i < len(rqqs)]
+
+        if not rqqSequence:
+            return cls([], startTimeSec=startTimeSec, bpm=bpm,
+                       ticksPerBeat=ticksPerBeat)
+
+        # join into one RQQ and build TimeGrid
+        durationBeats = sum(rqq.durationBeats for rqq in rqqSequence)
+        rJoined       = RQQ(durationBeats, rqqSequence)
+        print(rJoined.ratios[0])
+        tg            = cls.fromRQQ(
+            rJoined,
+            startTimeSec = startTimeSec,
+            bpm          = bpm,
+            ticksPerBeat = ticksPerBeat,
+        )
+
+        # apply cutoff window
+        if durationsCutoffBeats is not None:
+            allOnsets  = tg.sorted()
+            windowSec  = beatToSec(durationsCutoffBeats, bpm)
+            totalSec   = beatToSec(durationBeats, bpm)
+
+            if cutoffMode == 'end':
+                windowStart = startTimeSec + max(0.0, totalSec - windowSec)
+            elif cutoffMode == 'middle':
+                windowStart = startTimeSec + max(0.0, (totalSec - windowSec) / 2)
+            else:  # 'start'
+                windowStart = startTimeSec
+
+            windowEnd = windowStart + windowSec
+            offset    = windowStart - startTimeSec
+            filtered  = [t - offset for t in allOnsets
+                         if windowStart - 1e-9 <= t < windowEnd]
+
+            tg = cls(
+                filtered,
+                startTimeSec = startTimeSec,
+                endTimeSec   = startTimeSec + windowSec,
+                bpm          = bpm,
+                ticksPerBeat = ticksPerBeat,
+            )
+
+        return tg
+        """
+        Build a TimeGrid from an L-System whose symbols are RQQ objects,
+        using index-based production rules for ergonomic rule definition.
+
+        Parameters
+        ----------
+        rqqs : list[RQQ]
+            The palette of RQQ objects, indexed from 0.
+        productionRules : list[list]
+            Index-based rules as nested lists:
+            [[predecessorIdx, [successorIdx0, successorIdx1, ...]], ...]
+            e.g. [[0, [0,1]], [1, [0,1,2]]]
+        numIterations : int
+            Number of L-System iterations.
+        startTimeSec : float
+        bpm : float
+        ticksPerBeat : int
+        durationsCutoffBeats : float | None
+            If set, only this many beats of the sequence are kept.
+            None = full sequence.
+        cutoffMode : str
+            Where to take the window from when durationsCutoffBeats is set:
+            'start'  — first N beats (default)
+            'end'    — last N beats
+            'middle' — middle N beats
+
+        Example
+        -------
+        >>> tg = TimeGrid.RQQfromLSystem(
+        ...     rqqs            = [r1, r2, r3],
+        ...     productionRules = [[0, [0,1]], [1, [2,1,2]], [2, [0]]],
+        ...     numIterations   = 5,
+        ...     bpm             = 90,
+        ...     durationsCutoffBeats = 16,
+        ...     cutoffMode      = 'end',
+        ... )
+        """
+        
+
+        # build ProductionRules from index-based nested list
+        rules = ProductionRules([
+            ProductionRule(
+                rqqs[predIdx],
+                [rqqs[succIdx] for succIdx in succIndices]
+            )
+            for predIdx, succIndices in productionRules
+        ])
+
+        axiom = [rqqs[0]]
+        lind  = LSystem(axiom, rules)
+        lind.iterate(numIterations)
+
+        # join generation into one RQQ
+        generation    = lind.currentGeneration()
+        durationBeats = sum(rqq.durationBeats for rqq in generation)
+        rJoined       = RQQ(durationBeats, generation)
+
+        # build full TimeGrid
+        tg = cls.fromRQQ(
+            rJoined,
+            startTimeSec = startTimeSec,
+            bpm          = bpm,
+            ticksPerBeat = ticksPerBeat,
+        )
+
+        # apply cutoff window
+        if durationsCutoffBeats is not None:
+            allOnsets    = tg.sorted()
+            windowSec    = beatToSec(durationsCutoffBeats, bpm)
+            totalSec     = beatToSec(durationBeats, bpm)
+
+            if cutoffMode == 'end':
+                windowStart = startTimeSec + totalSec - windowSec
+            elif cutoffMode == 'middle':
+                windowStart = startTimeSec + (totalSec - windowSec) / 2
+            else:  # 'start'
+                windowStart = startTimeSec
+
+            windowEnd = windowStart + windowSec
+            filtered  = [t for t in allOnsets if windowStart - 1e-9 <= t < windowEnd]
+            # re-zero onset times to startTimeSec
+            offset    = windowStart - startTimeSec
+            filtered  = [t - offset for t in filtered]
+
+            tg = cls(
+                filtered,
+                startTimeSec = startTimeSec,
+                endTimeSec   = startTimeSec + windowSec,
+                bpm          = bpm,
+                ticksPerBeat = ticksPerBeat,
+            )
+
+        return tg
+
+    
+    @classmethod
+    def fromEuclidean(
+        cls,
+        pulses: int,
+        steps: int,
+        rotation: int = 0,
+        *,
+        durationBeats: float | None = None,
+        durationSec: float | None = None,
+        startTimeSec: float = 0.0,
+        bpm: float = 60.0,
+        ticksPerBeat: int = 480,
+    ) -> "TimeGrid":
+        """
+        Build a TimeGrid from a Euclidean rhythm (Bjorklund algorithm).
+
+        Distributes *pulses* as evenly as possible across *steps* positions.
+        Classic examples: E(3,8) = [1,0,0,1,0,0,1,0] (tresillo),
+                          E(5,8) = [1,0,1,1,0,1,1,0] (cinquillo).
+
+        Parameters
+        ----------
+        pulses : int
+            Number of onsets (active steps).
+        steps : int
+            Total number of grid positions.
+        rotation : int
+            Rotate the pattern left by this many steps. Default 0.
+        durationBeats : float | None
+            Total duration in beats. If both None, defaults to steps beats.
+        durationSec : float | None
+            Total duration in seconds. Takes precedence over durationBeats
+            if both are given.
+        startTimeSec : float
+        bpm : float
+        ticksPerBeat : int
+
+        Examples
+        --------
+        >>> TimeGrid.fromEuclidean(3, 8, durationBeats=2.0, bpm=120)
+        >>> TimeGrid.fromEuclidean(5, 8, rotation=2, durationBeats=4.0, bpm=90)
+        """
+        if pulses < 0 or steps <= 0:
+            raise ValueError(
+                f"TimeGrid.fromEuclidean: need steps > 0 and pulses >= 0, "
+                f"got pulses={pulses}, steps={steps}"
+            )
+        # clamp pulses to available steps
+        pulses = min(pulses, steps)
+
+        # --- Bjorklund / Euclidean algorithm ---
+        # Build the pattern as a list of 1s and 0s
+        if pulses == 0:
+            pattern = [0] * steps
+        elif pulses == steps:
+            pattern = [1] * steps
+        else:
+            # Bjorklund algorithm via Euclidean string construction
+            # Represent as two groups: ones and zeros, then recursively
+            # interleave until remainder has length <= 1
+            ones  = [[1]] * pulses
+            zeros = [[0]] * (steps - pulses)
+
+            while len(zeros) > 1:
+                # pair each zero with a one
+                nPairs  = min(len(ones), len(zeros))
+                paired  = [ones[i] + zeros[i] for i in range(nPairs)]
+                remainder = ones[nPairs:] if len(ones) > len(zeros) else zeros[nPairs:]
+                ones  = paired
+                zeros = remainder
+                if not zeros:
+                    break
+
+            # flatten
+            pattern = []
+            for group in ones + zeros:
+                pattern += group
+
+        # apply rotation (left shift)
+        rotation = rotation % len(pattern) if pattern else 0
+        pattern  = pattern[rotation:] + pattern[:rotation]
+
+        # --- convert to onset times ---
+        if durationSec is not None:
+            totalSec  = float(durationSec)
+        elif durationBeats is not None:
+            totalSec  = beatToSec(float(durationBeats), bpm)
+        else:
+            totalSec  = beatToSec(float(len(pattern)), bpm)
+
+        stepSec = totalSec / len(pattern)
+        onsets  = [
+            startTimeSec + i * stepSec
+            for i, v in enumerate(pattern) if v == 1
+        ]
+
+        endTimeSec = startTimeSec + totalSec
+        return cls(
+            onsets,
+            startTimeSec = startTimeSec,
+            endTimeSec   = endTimeSec,
+            bpm          = bpm,
+            ticksPerBeat = ticksPerBeat,
+        )
+
+    @classmethod
+    def fromPulsesEuclidean(
+        cls,
+        pulses: int,
+        subdivisions: list = [1, 2, 4],
+        rotation: int = 0,
+        *,
+        durationBeats: float | None = None,
+        durationSec: float | None = None,
+        startTimeSec: float = 0.0,
+        bpm: float = 60.0,
+        ticksPerBeat: int = 480,
+    ) -> "TimeGrid":
+        """
+        Build a Euclidean rhythm from a number of pulses and a subdivision list.
+
+        Like fromDensityEuclidean but takes pulses directly instead of Hz.
+        Pulses are clamped to the number of available grid positions.
+
+        Parameters
+        ----------
+        pulses : int
+            Number of onsets to distribute across the grid.
+        subdivisions : list
+            Beat subdivisions defining the grid, e.g. [1, 2, 4].
+        rotation : int
+            Rotate the pattern left by this many steps.
+        durationBeats : float | None
+        durationSec : float | None
+        startTimeSec : float
+        bpm : float
+        ticksPerBeat : int
+
+        Examples
+        --------
+        >>> # 7 pulses on a triplet grid over 8 beats
+        >>> TimeGrid.fromPulsesEuclidean(7, [3], 0, durationBeats=8.0, bpm=126.0)
+
+        >>> # 5 pulses on a mixed grid, rotated by 2
+        >>> TimeGrid.fromPulsesEuclidean(5, [1,2,4], 2, durationBeats=4.0, bpm=120)
+        """
+        # resolve duration
+        if durationSec is not None:
+            totalSec = float(durationSec)
+        elif durationBeats is not None:
+            totalSec = beatToSec(float(durationBeats), bpm)
+        else:
+            totalSec = beatToSec(4.0, bpm)
+
+        # build actual grid positions in seconds
+        startBeats     = secToBeat(startTimeSec, bpm)
+        durationBeats_ = secToBeat(totalSec, bpm)
+        _EPS           = 1e-9
+        seen: set[float] = set()
+        for sd in subdivisions:
+            nSteps = int(round(durationBeats_ * sd))
+            for i in range(nSteps + 1):
+                tBeat = startBeats + i / sd
+                tSec  = round(beatToSec(tBeat, bpm), 8)
+                if startTimeSec - _EPS <= tSec < startTimeSec + totalSec - _EPS:
+                    seen.add(tSec)
+
+        gridTimes = sorted(seen)
+        steps     = len(gridTimes)
+
+        if steps == 0:
+            return cls([], startTimeSec=startTimeSec, bpm=bpm,
+                       ticksPerBeat=ticksPerBeat)
+
+        # clamp pulses to available steps
+        pulses = max(0, min(int(pulses), steps))
+
+        # Euclidean pattern
+        if pulses == 0:
+            pattern = [0] * steps
+        elif pulses == steps:
+            pattern = [1] * steps
+        else:
+            ones  = [[1]] * pulses
+            zeros = [[0]] * (steps - pulses)
+            while len(zeros) > 1:
+                nPairs    = min(len(ones), len(zeros))
+                paired    = [ones[i] + zeros[i] for i in range(nPairs)]
+                remainder = ones[nPairs:] if len(ones) > len(zeros) else zeros[nPairs:]
+                ones      = paired
+                zeros     = remainder
+                if not zeros:
+                    break
+            pattern = []
+            for group in ones + zeros:
+                pattern += group
+
+        # apply rotation
+        rotation = rotation % len(pattern) if pattern else 0
+        pattern  = pattern[rotation:] + pattern[:rotation]
+
+        onsets = [gridTimes[i] for i, v in enumerate(pattern) if v == 1]
+
+        return cls(
+            onsets,
+            startTimeSec = startTimeSec,
+            endTimeSec   = startTimeSec + totalSec,
+            bpm          = bpm,
+            ticksPerBeat = ticksPerBeat,
+        )
+
+    @classmethod
+    def fromDensityEuclidean(
+        cls,
+        densityHz: float = 4.0,
+        subdivisions: list = [1, 2, 4],
+        rotation: int = 0,
+        *,
+        durationBeats: float | None = None,
+        durationSec: float | None = None,
+        startTimeSec: float = 0.0,
+        bpm: float = 60.0,
+        ticksPerBeat: int = 480,
+    ) -> "TimeGrid":
+        """
+        Build a Euclidean rhythm from a density in Hz and a subdivision list.
+
+        The subdivision list defines the grid (steps). The number of pulses
+        is derived from densityHz * durationSec, rounded to the nearest integer
+        and clamped to [0, steps].
+
+        Parameters
+        ----------
+        densityHz : float
+            Expected events per second.
+        subdivisions : list
+            Beat subdivisions defining the grid, e.g. [1, 2, 4].
+            The union of all subdivision positions becomes the step pool.
+        rotation : int
+            Rotate the Euclidean pattern left by this many steps.
+        durationBeats : float | None
+        durationSec : float | None
+        startTimeSec : float
+        bpm : float
+        ticksPerBeat : int
+
+        Examples
+        --------
+        >>> # triplet grid, ~10 events/sec over 8 beats
+        >>> TimeGrid.fromDensityEuclidean(10, [3], 8, bpm=126.0)
+        >>> # mixed grid
+        >>> TimeGrid.fromDensityEuclidean(4.0, [1,2,4], durationBeats=2.0, bpm=120)
+        """
+        # resolve duration
+        if durationSec is not None:
+            totalSec = float(durationSec)
+        elif durationBeats is not None:
+            totalSec = beatToSec(float(durationBeats), bpm)
+        else:
+            totalSec = beatToSec(4.0, bpm)
+
+        # build the actual grid positions in seconds (sorted, deduplicated)
+        startBeats     = secToBeat(startTimeSec, bpm)
+        durationBeats_ = secToBeat(totalSec, bpm)
+        _EPS           = 1e-9
+        seen: set[float] = set()
+        for sd in subdivisions:
+            nSteps = int(round(durationBeats_ * sd))
+            for i in range(nSteps + 1):
+                tBeat = startBeats + i / sd
+                tSec  = round(beatToSec(tBeat, bpm), 8)
+                if startTimeSec - _EPS <= tSec < startTimeSec + totalSec - _EPS:
+                    seen.add(tSec)
+
+        gridTimes = sorted(seen)
+        steps     = len(gridTimes)
+
+        if steps == 0:
+            return cls([], startTimeSec=startTimeSec, bpm=bpm,
+                       ticksPerBeat=ticksPerBeat)
+
+        # derive pulses from densityHz — clamp to [0, steps]
+        pulses = int(round(densityHz * totalSec))
+        pulses = max(0, min(pulses, steps))
+
+        # build Euclidean binary pattern
+        if pulses == 0:
+            pattern = [0] * steps
+        elif pulses == steps:
+            pattern = [1] * steps
+        else:
+            ones  = [[1]] * pulses
+            zeros = [[0]] * (steps - pulses)
+            while len(zeros) > 1:
+                nPairs    = min(len(ones), len(zeros))
+                paired    = [ones[i] + zeros[i] for i in range(nPairs)]
+                remainder = ones[nPairs:] if len(ones) > len(zeros) else zeros[nPairs:]
+                ones      = paired
+                zeros     = remainder
+                if not zeros:
+                    break
+            pattern = []
+            for group in ones + zeros:
+                pattern += group
+
+        # apply rotation
+        rotation = rotation % len(pattern) if pattern else 0
+        pattern  = pattern[rotation:] + pattern[:rotation]
+
+        # select onset times from the actual grid positions
+        onsets = [gridTimes[i] for i, v in enumerate(pattern) if v == 1]
+
+        endTimeSec = startTimeSec + totalSec
+        return cls(
+            onsets,
+            startTimeSec = startTimeSec,
+            endTimeSec   = endTimeSec,
+            bpm          = bpm,
+            ticksPerBeat = ticksPerBeat,
         )
 
     @classmethod
