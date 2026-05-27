@@ -27,7 +27,6 @@ src/GreasyPidgin/TemporalObject.py
 src/GreasyPidgin/TimeGrid.py
 src/GreasyPidgin/TuningSystemAndScaleMask.py
 src/GreasyPidgin/__init__.py
-src/GreasyPidgin/celluarExp.py
 src/GreasyPidgin.egg-info/PKG-INFO
 src/GreasyPidgin.egg-info/SOURCES.txt
 src/GreasyPidgin.egg-info/dependency_links.txt

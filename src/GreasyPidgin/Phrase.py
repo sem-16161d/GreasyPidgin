@@ -52,11 +52,11 @@ Usage
 """
 
 from GreasyPidgin.TimeGrid import beatToSec, secToBeat
-from .TemporalObject import TemporalObject
-from .Phonon import Phonon
-from .Gesture import Gesture
-from .Envelope import Envelope
-from .Exporters import MidiExporter, JsonExporter, CsvExporter, MusicXmlExporter
+from GreasyPidgin.TemporalObject import TemporalObject
+from GreasyPidgin.Phonon import Phonon
+from GreasyPidgin.Gesture import Gesture
+from GreasyPidgin.Envelope import Envelope
+from GreasyPidgin.Exporters import MidiExporter, JsonExporter, CsvExporter, MusicXmlExporter
 
 
 class Phrase(TemporalObject):

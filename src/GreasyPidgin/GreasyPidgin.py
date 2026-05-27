@@ -1,8 +1,8 @@
-from .PitchGrid import PitchGrid
-from .TemporalObject import TemporalObject
-from .TimeGrid import TimeGrid
-from .DynamicGrid import DynamicGrid
-from .Ensemble import Ensemble
+from GreasyPidgin.PitchGrid import PitchGrid
+from GreasyPidgin.TemporalObject import TemporalObject
+from GreasyPidgin.TimeGrid import TimeGrid
+from GreasyPidgin.DynamicGrid import DynamicGrid
+from GreasyPidgin.Ensemble import Ensemble
 
 def _ensureType(input, cls ):
     if not isinstance(input, cls):

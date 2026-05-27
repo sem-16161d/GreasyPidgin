@@ -2,8 +2,8 @@
 from GreasyPidgin.DynamicGrid import DynamicGrid
 from GreasyPidgin.PitchGrid import PitchGrid
 from GreasyPidgin.TimeGrid import TimeGrid
-from .Instruments import STANDARD_INSTRUMENTS
-from .Player import Player
+from GreasyPidgin.Instruments import STANDARD_INSTRUMENTS
+from GreasyPidgin.Player import Player
 
 
 class Ensemble(dict):

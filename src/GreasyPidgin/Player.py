@@ -1,8 +1,8 @@
 # Player.py
 from GreasyPidgin import DynamicGrid, PitchGrid, TimeGrid
-from .Instrument import Instrument
-from .Instruments import STANDARD_INSTRUMENTS
-from .TemporalObject import TemporalObject
+from GreasyPidgin.Instrument import Instrument
+from GreasyPidgin.Instruments import STANDARD_INSTRUMENTS
+from GreasyPidgin.TemporalObject import TemporalObject
 
 class Player:
     def __init__(

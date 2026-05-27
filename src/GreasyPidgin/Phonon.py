@@ -16,9 +16,9 @@ from GreasyPidgin.IterableOperations import flatten, isNested
 from GreasyPidgin.Normalisation import scale
 from GreasyPidgin.Pitch import ftom, spntom
 from GreasyPidgin.TimeGrid import beatToSec, secToBeat
-from .TemporalObject import TemporalObject
-from .Envelope import Envelope
-from .Exporters import MidiExporter, JsonExporter, CsvExporter, MusicXmlExporter
+from GreasyPidgin.TemporalObject import TemporalObject
+from GreasyPidgin.Envelope import Envelope
+from GreasyPidgin.Exporters import MidiExporter, JsonExporter, CsvExporter, MusicXmlExporter
 
 
 class Phonon(TemporalObject):

@@ -12,8 +12,8 @@ last updated: 08.12.2025
 """
 
 
-from .Instrument import Instrument  # adjust to your actual module name
-from .Pitch import spntom as nm
+from GreasyPidgin.Instrument import Instrument  # adjust to your actual module name
+from GreasyPidgin.Pitch import spntom as nm
 
 # ---------------------------------------------------------------------------
 # Utility: note-name -> MIDI (supports quarter-tones)

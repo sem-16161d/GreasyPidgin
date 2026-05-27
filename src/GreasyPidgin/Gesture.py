@@ -15,9 +15,9 @@ Construction
 
 from GreasyPidgin.TimeGrid import beatToSec, secToBeat
 from GreasyPidgin.IterableOperations import ensureList
-from .TemporalObject import TemporalObject
-from .Phonon import Phonon
-from .Exporters import MidiExporter, JsonExporter, CsvExporter, MusicXmlExporter
+from GreasyPidgin.TemporalObject import TemporalObject
+from GreasyPidgin.Phonon import Phonon
+from GreasyPidgin.Exporters import MidiExporter, JsonExporter, CsvExporter, MusicXmlExporter
 
 
 class Gesture(TemporalObject):

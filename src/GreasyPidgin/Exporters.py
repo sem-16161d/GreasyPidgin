@@ -42,7 +42,7 @@ import os
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from .TemporalObject import TemporalObject
+    from GreasyPidgin.TemporalObject import TemporalObject
 
 
 # ---------------------------------------------------------------------------

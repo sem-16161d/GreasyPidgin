@@ -31,7 +31,7 @@ from random import randint, random
 from math import ceil
 from GreasyPidgin.LSystem import LSystem, ProductionRules, ProductionRule
 
-from .Grid import Grid
+from GreasyPidgin.Grid import Grid
 
 
 # ---------------------------------------------------------------------------

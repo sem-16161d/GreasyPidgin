@@ -39,9 +39,9 @@ Example
     pg.toMidi('/tmp/dorian.mid')
 """
 
-from .Grid import Grid
-from .Pitch import mtof, forceIntoRangeMidi
-from .TuningSystemAndScaleMask import (
+from GreasyPidgin.Grid import Grid
+from GreasyPidgin.Pitch import mtof, forceIntoRangeMidi
+from GreasyPidgin.TuningSystemAndScaleMask import (
     TuningSystem, ScaleMask, TUNING_SYSTEMS,
     _toMidi, _circDist,
 )
@@ -457,8 +457,8 @@ class PitchGrid(Grid):
         pitchBendRange: int = 4096,
     ) -> str:
         """Export the grid as a chromatic sequence, one note per pitch."""
-        from .TemporalObject import TemporalObject
-        from .Exporters import MidiExporter
+        from GreasyPidgin.TemporalObject import TemporalObject
+        from GreasyPidgin.Exporters import MidiExporter
 
         container = TemporalObject(0.0, data={"bpm": bpm})
         cur = 0.0
