@@ -4,11 +4,11 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "GreasyPidgin"
-version = "0.2"
+version = "0.9.1"
 description = "Algorithmic composition toolkit inspired by slippery chicken"
 readme = "README.md"
 requires-python = ">=3.10"
-license = { text = "MIT" }  # or whatever you actually use
+license = { text = "MIT" } 
 authors = [
   { name = "Sem Ribeiro Albuquerque Wendt", email = "sem@16161d.net" }
 ]
