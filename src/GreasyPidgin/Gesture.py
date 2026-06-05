@@ -84,6 +84,7 @@ class Gesture(TemporalObject):
         self,
         path: str = "/tmp/gesture.mid",
         *,
+        bpm: float | None = None,
         noteSelectKey: str = 'lowest',
         trackName: str = "gesture",
         parseEnvelopes: bool = True,
@@ -93,6 +94,12 @@ class Gesture(TemporalObject):
         channel: int = 0,
     ) -> None:
         """Unfold all Phonons then export to MIDI."""
+        # allow explicit bpm override — also write it into data so
+        # MidiExporter always finds it regardless of how the Gesture was built
+        if bpm is not None:
+            self.data["bpm"] = float(bpm)
+        elif "bpm" not in self.data or not self.data["bpm"]:
+            self.data["bpm"] = float(getattr(self, "bpm", 60.0))
         self._unfoldAll(noteSelectKey)
         self.export(MidiExporter(
             path,

@@ -42,7 +42,7 @@ import os
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from GreasyPidgin.TemporalObject import TemporalObject
+    from .TemporalObject import TemporalObject
 
 
 # ---------------------------------------------------------------------------
@@ -111,7 +111,7 @@ def _semToBend(semitones: float, pitchBendRange: int) -> int:
 def _centLabel(semitones: float) -> str | None:
     """Return '+50 CENT' style label, or None if the deviation is zero."""
     cents = round(semitones * 100)
-    return f"{cents:+d}" if cents != 0 else None
+    return f"{cents:+d} CENT" if cents != 0 else None
 
 
 # ---------------------------------------------------------------------------
@@ -204,15 +204,15 @@ class MidiExporter(Exporter):
             print("MidiExporter: nothing to export.")
             return
 
-        bpm          = float(to.data.get("bpm", 60.0))
-        ticksPerBeat = int(to.data.get("ticksPerBeat", 480))
+        bpm          = float(to.data.get("bpm") or getattr(to, "bpm", 60.0))
+        ticksPerBeat = int(to.data.get("ticksPerBeat") or getattr(to, "ticksPerBeat", 480))
 
         leaves = self._assignTracks(leaves)
         nTracks = max(lf.midiTrackIndex for lf in leaves) + 1
 
         tracks: list[list[tuple[float, object]]] = [[] for _ in range(nTracks)]
         for leaf in leaves:
-            leafBpm = float(leaf.data.get("bpm", bpm))
+            leafBpm = float(leaf.data.get("bpm") or getattr(leaf, "bpm", bpm))
             tracks[leaf.midiTrackIndex].extend(self._leafMessages(leaf, leafBpm))
 
         midiFile = MidiFile(ticks_per_beat=ticksPerBeat)
@@ -359,7 +359,7 @@ class MidiExporter(Exporter):
             ]
 
         # glissando — interpolate at pitchwheelResolution steps per second
-        durationSec = (endB - startB) * 60.0 / max(leaf.data.get("bpm", 60.0), 1e-6)
+        durationSec = (endB - startB) * 60.0 / max(leaf.data.get("bpm") or getattr(leaf, "bpm", 60.0), 1e-6)
         nSteps      = max(2, int(durationSec * self.pitchwheelResolution))
         msgs        = []
         for i in range(nSteps):
@@ -616,7 +616,7 @@ class MusicXmlExporter(Exporter):
             print("MusicXmlExporter: nothing to export.")
             return
 
-        bpm = float(to.data.get("bpm", 60.0))
+        bpm = float(to.data.get("bpm") or getattr(to, "bpm", 60.0))
 
         active: list[tuple[float, int]] = []
         nextTrack = 0
@@ -642,7 +642,7 @@ class MusicXmlExporter(Exporter):
             part.append(m21.stream.Measure())
 
         for leaf in leaves:
-            leafBpm       = float(leaf.data.get("bpm", bpm))
+            leafBpm       = float(leaf.data.get("bpm") or getattr(leaf, "bpm", bpm))
             midiNote      = int(round(float(leaf.data.get("pitchMidi", 60.0))))
             durationBeats = leaf.durationSec * leafBpm / 60.0
             note          = m21.note.Note(
