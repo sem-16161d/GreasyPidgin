@@ -15,6 +15,7 @@ only — it does not affect MIDI export.
 from GreasyPidgin.IterableOperations import flatten, isNested
 from GreasyPidgin.Normalisation import scale
 from GreasyPidgin.Pitch import ftom, spntom
+from GreasyPidgin.Dynamics import parseDynamicMarking
 from GreasyPidgin.TimeGrid import beatToSec, secToBeat
 from GreasyPidgin.TemporalObject import TemporalObject
 from GreasyPidgin.Envelope import Envelope
@@ -32,7 +33,7 @@ class Phonon(TemporalObject):
         startTime: float = 0.0,
         duration: float = 0.0,
         pitch: float | int | str | list | tuple = 0,
-        dynamic: float | int | list | tuple | Envelope = 64,
+        dynamic: float | int | list | tuple | Envelope | str = 64,
         bpm: float = 60.0,
         *,
         timeUnit: str = 'seconds',      # 's' / 'beats' / 'b'
@@ -264,7 +265,7 @@ class Phonon(TemporalObject):
 
     def _parseDynamic(
         self,
-        dynamic: float | int | list | tuple | Envelope,
+        dynamic: float | int | list | tuple | Envelope | str,
         dynamicUnit: str,
         durationSec: float,
     ) -> None:
@@ -274,11 +275,23 @@ class Phonon(TemporalObject):
         A single value → flat envelope → stored as data["dynamicdB"].
         A list or Envelope → time-varying → stored as envelopes["dynamic"]
                              AND envelopes["aftertouch"] for MIDI export.
+        A dynamic-marking string ('pp', 'mf', ...) or hairpin
+        ('pp-mp', 'ff>mp') is parsed via GreasyPidgin.Dynamics and
+        treated as MIDI velocity regardless of dynamicUnit — a plain
+        marking becomes a flat value, a hairpin becomes a time-varying
+        crescendo/diminuendo across the note's duration. The raw text
+        is also kept on data["dynamicMarking"] for introspection/export.
         """
         mindB    = 20.0
         maxdB    = 120.0
         minVelo  = 10
         maxVelo  = 127
+
+        if isinstance(dynamic, str):
+            self.data["dynamicMarking"] = dynamic.strip()
+            parsed      = parseDynamicMarking(dynamic)
+            dynamic     = list(parsed) if isinstance(parsed, tuple) else parsed
+            dynamicUnit = 'midi'   # markings are always velocity-scale
 
         def toDB(val: float) -> float:
             match dynamicUnit:
@@ -301,6 +314,9 @@ class Phonon(TemporalObject):
             env = Envelope(pts).rescale([0, durationSec])
             self.envelopes["dynamic"]    = env
             self.envelopes["aftertouch"] = env
+            # note-on velocity reflects the dynamic's starting value,
+            # so a hairpin's attack is actually audible, not just its CC ramp
+            self.data["dynamicdB"] = toDB(float(dynamic[0]))
 
         else:
             # single value → flat, used as velocity only
@@ -377,6 +393,34 @@ class Phonon(TemporalObject):
         self.envelopes["glissando"] = (startMidi, endMidi)
 
     # ------------------------------------------------------------------
+    # Dynamic markings
+    # ------------------------------------------------------------------
+
+    def setDynamicMarking(self, text: str | None) -> None:
+        """
+        Re-set this Phonon's dynamic using a standard marking ('pp',
+        'mf', ...) or a hairpin ('pp-mp', 'ff>mp'), overwriting whatever
+        dynamic this Phonon currently has.
+
+        A plain marking becomes a flat velocity. A hairpin becomes a
+        crescendo/diminuendo Envelope spanning the Phonon's full
+        duration, exported as a channel-aftertouch ramp, while the
+        note-on velocity itself is set from the hairpin's starting value.
+
+        Pass None to clear the stored marking label — this does not
+        reset the underlying velocity/envelope, it just removes the
+        text bookkeeping in data["dynamicMarking"].
+        """
+        if text is None:
+            self.data.pop("dynamicMarking", None)
+            return
+        self._parseDynamic(text, dynamicUnit='midi', durationSec=self.durationSec)
+
+    def getDynamicMarking(self) -> str | None:
+        """Return the raw dynamic-marking text last set on this Phonon, if any."""
+        return self.data.get("dynamicMarking")
+
+    # ------------------------------------------------------------------
     # Lyrics
     # ------------------------------------------------------------------
 
@@ -419,6 +463,38 @@ class Phonon(TemporalObject):
             return
         offsetSec = float(self.data.get("lyricOffsetSec", 0.0))
         newChildren[0].annotations.append((offsetSec, lyric))
+
+    def _attachEnvelopes(self, newChildren: list) -> None:
+        """
+        Propagate this Phonon's own envelopes (dynamic/aftertouch and any
+        generic CC envelope — anything except pitchwheel/glissando, which
+        travel via data["pitchwheel"] instead) onto every newly unfolded
+        leaf that spans the Phonon's full duration.
+
+        This covers the glissando guard and the 'chord'/'lowest'/'highest'/
+        'mostCommon'/'leastCommon'/'all'/'allSet' selections, where each
+        leaf starts at 0 and runs the full durationSec — including a
+        multi-voice chord, where every simultaneous voice should swell
+        together. Leaves produced by 'seq'/'chordSeq', which each cover
+        only a fraction of the duration, are skipped: slicing a
+        continuous envelope across sequential sub-notes isn't implemented.
+
+        "dynamic" is excluded: it mirrors "aftertouch" (set together by
+        _parseDynamic) but isn't a MIDI CC name, so MidiExporter would
+        error trying to look it up. "aftertouch" alone carries the same
+        envelope through to export.
+        """
+        if not newChildren:
+            return
+        passthroughKeys = [
+            k for k in self.envelopes if k not in ("pitchwheel", "glissando", "dynamic")
+        ]
+        if not passthroughKeys:
+            return
+        for child in newChildren:
+            if abs(child.startTimeSec) < 1e-9 and abs(child.durationSec - self.durationSec) < 1e-9:
+                for key in passthroughKeys:
+                    child.envelopes[key] = self.envelopes[key]
 
     # ------------------------------------------------------------------
     # Unfold: resolve pitch + dynamic into TemporalObject children
@@ -468,6 +544,7 @@ class Phonon(TemporalObject):
                 },
             ))
             self._attachLyric(newChildren)
+            self._attachEnvelopes(newChildren)
             self.children = (
                 [c for c in self.children if isinstance(c, Phonon)]
                 + newChildren
@@ -534,6 +611,7 @@ class Phonon(TemporalObject):
                     ))
 
         self._attachLyric(newChildren)
+        self._attachEnvelopes(newChildren)
 
         # replace only the non-Phonon children (Phonons were already unfolded)
         self.children = (
@@ -624,6 +702,7 @@ class Phonon(TemporalObject):
             f"   duration     : {self.durationSec:.3f}s  "
             f"({self.durationBeats:.3f} beats)\n"
             f"   bpm          : {bpm}\n"
+            f"   dynamicMark  : {self.data.get('dynamicMarking')!r}\n"
             f"   lyric        : {self.data.get('lyric')!r}\n"
             f"   chordOrSeq   : {self.chordOrSeq}\n"
             f"   allPitches   : {sorted(set(round(p, 3) for p in self.allPitches))}\n"

@@ -77,6 +77,34 @@ class Gesture(TemporalObject):
                 child.unfold(noteSelectKey)
 
     # ------------------------------------------------------------------
+    # Dynamic markings
+    # ------------------------------------------------------------------
+
+    def setDynamicMarkings(self, markings: list[str]) -> None:
+        """
+        Assign dynamic markings ('pp', 'mf', 'pp-mp', ...) to this
+        Gesture's direct Phonon children, one per Phonon, in child order.
+
+        Nested Gesture children are skipped — call setDynamicMarkings()
+        on them individually. If there are fewer markings than Phonon
+        children the remaining children are left unset; extra markings
+        beyond the number of children are ignored.
+
+        Example
+        -------
+        >>> g = Gesture.fromLists(size=4, pitches=[60, 62, 64, 65])
+        >>> g.setDynamicMarkings(["pp", "pp-mp", "mf", "f"])
+        >>> g.toMidi("/tmp/out.mid")
+        """
+        phononChildren = [c for c in self.children if isinstance(c, Phonon)]
+        for phonon, marking in zip(phononChildren, markings):
+            phonon.setDynamicMarking(marking)
+
+    def getDynamicMarkings(self) -> list[str | None]:
+        """Return the dynamic marking (or None) of each direct Phonon child, in order."""
+        return [c.getDynamicMarking() for c in self.children if isinstance(c, Phonon)]
+
+    # ------------------------------------------------------------------
     # Lyrics
     # ------------------------------------------------------------------
 
