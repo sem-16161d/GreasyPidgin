@@ -584,12 +584,42 @@ class MusicXmlExporter(Exporter):
         dynamicdB    float  — mapped to a Dynamic mark
         bpm          float  — tempo
         ticksPerBeat int    — used for duration quantisation
+        annotations  list   — [(offsetSec, str), ...] (falls back to
+                               leaf.annotations, same as MidiExporter);
+                               the first entry's text becomes the note's
+                               lyric, e.g. Phonon.setLyric()/Gesture.setLyrics()
+        dynamicMarking str  — a flat marking ('mf') becomes a real Dynamic
+                               mark at the note's onset; a hairpin like
+                               'pp-mp' or 'ff>mp' prints as one dash-joined
+                               italic text label 'pp-mp' (not a wedge, and
+                               not MusicXML's <other-dynamics> — that
+                               fallback is spec-valid but Dorico's importer
+                               drops it, so a plain <words> text element is
+                               used instead for reliability) — see
+                               Phonon.setDynamicMarking() / Gesture.setDynamicMarkings()
+
+    Parameters
+    ----------
+    path : str
+    title : str
+    timeSignature : str
+        Fixed time signature used to bar the whole piece (default "4/4").
+        This is not meter inference — every measure gets the same length,
+        derived from this signature.
+
+    A note that runs past the barline of the measure it starts in is
+    split into fragments at each barline it crosses and tied back
+    together (Tie 'start' / 'continue' / 'stop') — inserting an
+    over-long, untied note directly is not just visually odd: music21's
+    own writer will silently re-split it at the wrong offsets when it
+    doesn't fit its measure, corrupting the note's timing. Splitting it
+    correctly ourselves avoids that.
 
     Not yet implemented:
         - Microtonal pitch
         - Envelope / CC data
-        - Time / key signature inference
-        - Tied notes across barlines
+        - Automatic time / key signature inference (a single fixed
+          timeSignature is used throughout — see above)
         - Chords (simultaneous notes on the same track)
     """
 
@@ -598,9 +628,66 @@ class MusicXmlExporter(Exporter):
         path: str = "/tmp/out.xml",
         *,
         title: str = "GreasyPidgin Score",
+        timeSignature: str = "4/4",
     ) -> None:
         super().__init__(path)
-        self.title = title
+        self.title         = title
+        self.timeSignature = timeSignature
+
+    def _splitAtBarlines(self, offsetBeats: float, durationBeats: float, barLen: float):
+        """
+        Yield (measureIndex, localOffset, fragmentDuration) triples that
+        cover [offsetBeats, offsetBeats + durationBeats), split at every
+        barline crossed. A note entirely within one measure yields a
+        single fragment.
+        """
+        end = offsetBeats + durationBeats
+        pos = offsetBeats
+        eps = 1e-9
+        if durationBeats <= eps:
+            measureIdx = int((pos + eps) // barLen)
+            yield measureIdx, pos - measureIdx * barLen, durationBeats
+            return
+        while pos < end - eps:
+            measureIdx  = int((pos + eps) // barLen)
+            measureEnd  = (measureIdx + 1) * barLen
+            fragEnd     = min(end, measureEnd)
+            localOffset = pos - measureIdx * barLen
+            yield measureIdx, localOffset, fragEnd - pos
+            pos = fragEnd
+
+    def _insertDynamicMarking(self, m21, marking: str, fragments: list, trackMeasures: list) -> None:
+        """
+        Render one leaf's dynamic-marking text at the note's onset.
+
+        A plain marking ('mf') becomes a real Dynamic mark (<dynamics><mf/>),
+        which every notation program reads natively.
+
+        A hairpin ('pp-mp', 'ff>mp') is *not* drawn as a wedge/hairpin
+        shape — it prints as one dash-joined label ('pp-mp'), regardless
+        of which separator ('-', '<', '>', '~') the marking was written
+        with. This is rendered as plain italic text (MusicXML <words>)
+        rather than a Dynamic's <other-dynamics> fallback: <other-dynamics>
+        is valid MusicXML and MuseScore reads it fine, but Dorico's
+        importer silently drops it, while <words> — the same element used
+        for tempo/expression text — is read reliably everywhere.
+        """
+        from .Dynamics import splitHairpin
+
+        firstMeasureIdx, firstLocalOffset, _ = fragments[0]
+        hairpin = splitHairpin(marking)
+
+        if hairpin is None:
+            trackMeasures[firstMeasureIdx].insert(
+                firstLocalOffset, m21.dynamics.Dynamic(marking.strip().lower())
+            )
+            return
+
+        label = f"{hairpin[0]}-{hairpin[1]}"
+        text = m21.expressions.TextExpression(label)
+        text.style.fontStyle = "italic"
+        text.placement = "below"
+        trackMeasures[firstMeasureIdx].insert(firstLocalOffset, text)
 
     def export(self, to: "TemporalObject") -> None:
         try:
@@ -616,8 +703,10 @@ class MusicXmlExporter(Exporter):
             print("MusicXmlExporter: nothing to export.")
             return
 
-        bpm = float(to.data.get("bpm") or getattr(to, "bpm", 60.0))
+        bpm    = float(to.data.get("bpm") or getattr(to, "bpm", 60.0))
+        barLen = m21.meter.TimeSignature(self.timeSignature).barDuration.quarterLength
 
+        # --- assign each leaf a track via greedy interval colouring ---
         active: list[tuple[float, int]] = []
         nextTrack = 0
         for leaf in sorted(leaves, key=lambda c: (c.startTimeSec, c.endTimeSec)):
@@ -634,23 +723,77 @@ class MusicXmlExporter(Exporter):
             active.append((leaf.endTimeSec, tr))
 
         nTracks = nextTrack
-        score   = m21.stream.Score()
+
+        # --- convert every leaf to beats up front, and find how many ---
+        # --- bars of `timeSignature` the whole piece needs           ---
+        leafBeats: list[tuple[object, float, float]] = []
+        lastMeasureIndex = 0
+        for leaf in leaves:
+            leafBpm       = float(leaf.data.get("bpm") or getattr(leaf, "bpm", bpm))
+            durationBeats = leaf.durationSec * leafBpm / 60.0
+            offsetBeats   = leaf.startTimeSec * leafBpm / 60.0
+            leafBeats.append((leaf, offsetBeats, durationBeats))
+            lastMeasureIndex = max(
+                lastMeasureIndex, int((offsetBeats + durationBeats) // barLen)
+            )
+        nMeasures = lastMeasureIndex + 1
+
+        # --- build the score: every part gets the same number of      ---
+        # --- `timeSignature`-length measures, so all tracks stay      ---
+        # --- bar-aligned and music21's notation engine only ever has  ---
+        # --- to reason about one bar's worth of material at a time.   ---
+        # --- (Putting the whole piece in a single unbarred Measure —  ---
+        # --- the previous behaviour — made music21's tuplet/beam      ---
+        # --- grouping pathologically slow: a hundred mixed-tuplet     ---
+        # --- notes could take minutes, sometimes never finishing, vs. ---
+        # --- a fraction of a second once barred.)                     ---
+        score = m21.stream.Score()
         score.metadata = m21.metadata.Metadata()
         score.metadata.title = self.title
         parts = [m21.stream.Part() for _ in range(nTracks)]
-        for part in parts:
-            part.append(m21.stream.Measure())
 
-        for leaf in leaves:
-            leafBpm       = float(leaf.data.get("bpm") or getattr(leaf, "bpm", bpm))
+        measures: list[list] = []
+        for part in parts:
+            partMeasures = []
+            for i in range(nMeasures):
+                measure = m21.stream.Measure(number=i + 1)
+                if i == 0:
+                    measure.insert(0.0, m21.meter.TimeSignature(self.timeSignature))
+                part.insert(i * barLen, measure)
+                partMeasures.append(measure)
+            measures.append(partMeasures)
+
+        for leaf, offsetBeats, durationBeats in leafBeats:
             midiNote      = int(round(float(leaf.data.get("pitchMidi", 60.0))))
-            durationBeats = leaf.durationSec * leafBpm / 60.0
-            note          = m21.note.Note(
-                m21.pitch.Pitch(midiNote),
-                duration=m21.duration.Duration(durationBeats),
-            )
-            note.offset = leaf.startTimeSec * leafBpm / 60.0
-            parts[leaf.midiTrackIndex].measure(0).append(note)
+            fragments     = list(self._splitAtBarlines(offsetBeats, durationBeats, barLen))
+            trackMeasures = measures[leaf.midiTrackIndex]
+            for i, (measureIdx, localOffset, fragDur) in enumerate(fragments):
+                note = m21.note.Note(
+                    m21.pitch.Pitch(midiNote),
+                    duration=m21.duration.Duration(fragDur),
+                )
+                if len(fragments) > 1:
+                    note.tie = m21.tie.Tie(
+                        'start' if i == 0 else
+                        'stop' if i == len(fragments) - 1 else
+                        'continue'
+                    )
+                if i == 0:
+                    # a lyric belongs on the syllable's own onset only —
+                    # never repeated on a tied continuation fragment
+                    lyricEntries = leaf.data.get("annotations", leaf.annotations)
+                    if lyricEntries:
+                        note.lyric = str(lyricEntries[0][1])
+                # insert() (not append()) so the note lands at its actual
+                # offset within its measure — append() ignores any pre-set
+                # .offset and just places elements back-to-back in call
+                # order, which was silently discarding every leaf's real
+                # start time and any gaps (rests) between notes.
+                trackMeasures[measureIdx].insert(localOffset, note)
+
+            marking = leaf.data.get("dynamicMarking")
+            if marking:
+                self._insertDynamicMarking(m21, marking, fragments, trackMeasures)
 
         for part in parts:
             score.append(part)

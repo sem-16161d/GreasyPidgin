@@ -236,10 +236,11 @@ class Phrase(TemporalObject):
         *,
         noteSelectKey: str = 'lowest',
         title: str = "GreasyPidgin Score",
+        timeSignature: str = "4/4",
     ) -> None:
         """Unfold all children then export to MusicXML."""
         self._unfoldAll(noteSelectKey)
-        self.export(MusicXmlExporter(path, title=title))
+        self.export(MusicXmlExporter(path, title=title, timeSignature=timeSignature))
 
     def toCsv(
         self,

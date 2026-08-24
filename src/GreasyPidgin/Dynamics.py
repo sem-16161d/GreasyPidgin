@@ -70,6 +70,20 @@ def parseDynamicMarking(text: str) -> float | tuple[float, float]:
     return dynamicMarkingToVelocity(text)
 
 
+def splitHairpin(text: str) -> tuple[str, str] | None:
+    """
+    Return (startMarking, endMarking) as lowercase text if *text* is a
+    hairpin ('pp-mp', 'ff>mp', ...), or None if it's a plain marking.
+    Used by MusicXmlExporter to label the two ends of a crescendo/
+    diminuendo wedge with the actual marking text, not just its velocity.
+    """
+    m = _HAIRPIN_RE.match(text)
+    if not m:
+        return None
+    start, end = m.groups()
+    return start.strip().lower(), end.strip().lower()
+
+
 def isDynamicMarkingText(text) -> bool:
     """True if *text* looks like a dynamic marking or hairpin GreasyPidgin understands."""
     if not isinstance(text, str):

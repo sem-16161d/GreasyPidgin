@@ -496,6 +496,22 @@ class Phonon(TemporalObject):
                 for key in passthroughKeys:
                     child.envelopes[key] = self.envelopes[key]
 
+    def _attachDynamicMarking(self, newChildren: list) -> None:
+        """
+        Propagate this Phonon's dynamic-marking text (if any) onto every
+        newly unfolded leaf that spans the Phonon's full duration — the
+        same leaves _attachEnvelopes() targets. MusicXmlExporter reads
+        data["dynamicMarking"] to draw a literal dynamic mark and/or a
+        crescendo/diminuendo wedge; MIDI export is unaffected by this
+        (it already gets the actual velocity/aftertouch via _parseDynamic).
+        """
+        marking = self.data.get("dynamicMarking")
+        if marking is None or not newChildren:
+            return
+        for child in newChildren:
+            if abs(child.startTimeSec) < 1e-9 and abs(child.durationSec - self.durationSec) < 1e-9:
+                child.data["dynamicMarking"] = marking
+
     # ------------------------------------------------------------------
     # Unfold: resolve pitch + dynamic into TemporalObject children
     # ------------------------------------------------------------------
@@ -545,6 +561,7 @@ class Phonon(TemporalObject):
             ))
             self._attachLyric(newChildren)
             self._attachEnvelopes(newChildren)
+            self._attachDynamicMarking(newChildren)
             self.children = (
                 [c for c in self.children if isinstance(c, Phonon)]
                 + newChildren
@@ -612,6 +629,7 @@ class Phonon(TemporalObject):
 
         self._attachLyric(newChildren)
         self._attachEnvelopes(newChildren)
+        self._attachDynamicMarking(newChildren)
 
         # replace only the non-Phonon children (Phonons were already unfolded)
         self.children = (
@@ -654,10 +672,11 @@ class Phonon(TemporalObject):
         *,
         noteSelectKey: str = 'lowest',
         title: str = "GreasyPidgin Score",
+        timeSignature: str = "4/4",
     ) -> None:
         """Unfold pitches then export to MusicXML."""
         self.unfold(noteSelectKey)
-        self.export(MusicXmlExporter(path, title=title))
+        self.export(MusicXmlExporter(path, title=title, timeSignature=timeSignature))
 
     def toCsv(
         self,
