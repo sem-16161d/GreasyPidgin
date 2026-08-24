@@ -43,6 +43,7 @@ class Phonon(TemporalObject):
         ticksPerBeat: int = 480,
         envelopes: dict | None = None,
         referenceA: float = 440,
+        lyric: str | None = None,
     ) -> None:
 
         # --- time ---
@@ -81,6 +82,10 @@ class Phonon(TemporalObject):
         # if time-varying (list or Envelope) also stored as
         # self.envelopes["aftertouch"] for MIDI export
         self._parseDynamic(dynamic, dynamicUnit, durationSec)
+
+        # --- lyric ---
+        if lyric is not None:
+            self.setLyric(lyric)
 
     # ------------------------------------------------------------------
     # Time formatting
@@ -372,6 +377,50 @@ class Phonon(TemporalObject):
         self.envelopes["glissando"] = (startMidi, endMidi)
 
     # ------------------------------------------------------------------
+    # Lyrics
+    # ------------------------------------------------------------------
+
+    def setLyric(self, text: str | None, offsetSec: float = 0.0) -> None:
+        """
+        Attach a lyric syllable to this Phonon.
+
+        The lyric is carried through unfold() onto the first note-leaf
+        this Phonon resolves to — the note's onset, which is also where
+        a syllable is conventionally notated under a melisma (when a
+        Phonon unfolds into several sequential notes via noteSelectKey
+        'seq' / 'chordSeq'). MidiExporter then emits it as a MIDI
+        'lyrics' meta-event, via the same leaf.annotations mechanism
+        used for other time-stamped text.
+
+        Parameters
+        ----------
+        text : str | None
+            The lyric syllable / word. Pass None to clear a previously
+            set lyric.
+        offsetSec : float
+            Offset in seconds from the resolved leaf's own start time
+            (default 0.0 — exactly at the note onset).
+        """
+        if text is None:
+            self.data.pop("lyric", None)
+            self.data.pop("lyricOffsetSec", None)
+            return
+        self.data["lyric"]          = str(text)
+        self.data["lyricOffsetSec"] = float(offsetSec)
+
+    def getLyric(self) -> str | None:
+        """Return this Phonon's lyric text, or None if unset."""
+        return self.data.get("lyric")
+
+    def _attachLyric(self, newChildren: list) -> None:
+        """Append this Phonon's lyric (if any) onto the first resolved leaf."""
+        lyric = self.data.get("lyric")
+        if lyric is None or not newChildren:
+            return
+        offsetSec = float(self.data.get("lyricOffsetSec", 0.0))
+        newChildren[0].annotations.append((offsetSec, lyric))
+
+    # ------------------------------------------------------------------
     # Unfold: resolve pitch + dynamic into TemporalObject children
     # ------------------------------------------------------------------
 
@@ -418,6 +467,7 @@ class Phonon(TemporalObject):
                     "ticksPerBeat": ticksPerBeat,
                 },
             ))
+            self._attachLyric(newChildren)
             self.children = (
                 [c for c in self.children if isinstance(c, Phonon)]
                 + newChildren
@@ -482,6 +532,8 @@ class Phonon(TemporalObject):
                             "ticksPerBeat": ticksPerBeat,
                         },
                     ))
+
+        self._attachLyric(newChildren)
 
         # replace only the non-Phonon children (Phonons were already unfolded)
         self.children = (
@@ -572,6 +624,7 @@ class Phonon(TemporalObject):
             f"   duration     : {self.durationSec:.3f}s  "
             f"({self.durationBeats:.3f} beats)\n"
             f"   bpm          : {bpm}\n"
+            f"   lyric        : {self.data.get('lyric')!r}\n"
             f"   chordOrSeq   : {self.chordOrSeq}\n"
             f"   allPitches   : {sorted(set(round(p, 3) for p in self.allPitches))}\n"
             f"   lowest       : {self.calculatePitch('lowest')}\n"

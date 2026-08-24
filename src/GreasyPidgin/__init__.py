@@ -64,6 +64,15 @@ from .Pitch import (
 )
 
 # ---------------------------------------------------------------------------
+# Dynamic markings
+# ---------------------------------------------------------------------------
+from .Dynamics import (
+    DYNAMIC_MARKINGS,
+    dynamicMarkingToVelocity,
+    parseDynamicMarking,
+)
+
+# ---------------------------------------------------------------------------
 # Algorithmic tools
 # ---------------------------------------------------------------------------
 from .CellularAutomata  import CellularAutomaton, CellularRules

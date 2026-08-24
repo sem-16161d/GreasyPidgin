@@ -77,6 +77,34 @@ class Gesture(TemporalObject):
                 child.unfold(noteSelectKey)
 
     # ------------------------------------------------------------------
+    # Lyrics
+    # ------------------------------------------------------------------
+
+    def setLyrics(self, lyrics: list[str], *, offsetSec: float = 0.0) -> None:
+        """
+        Assign lyrics to this Gesture's direct Phonon children, one per
+        Phonon, in child order (Phonon.setLyric under the hood).
+
+        Nested Gesture children are skipped — call setLyrics() on them
+        individually. If there are fewer lyrics than Phonon children the
+        remaining children are left unset; extra lyrics beyond the number
+        of children are ignored.
+
+        Example
+        -------
+        >>> g = Gesture.fromLists(size=4, pitches=[60, 62, 64, 65])
+        >>> g.setLyrics(["la", "la", "la", "la"])
+        >>> g.toMidi("/tmp/out.mid")
+        """
+        phononChildren = [c for c in self.children if isinstance(c, Phonon)]
+        for phonon, text in zip(phononChildren, lyrics):
+            phonon.setLyric(text, offsetSec=offsetSec)
+
+    def getLyrics(self) -> list[str | None]:
+        """Return the lyric (or None) of each direct Phonon child, in order."""
+        return [c.getLyric() for c in self.children if isinstance(c, Phonon)]
+
+    # ------------------------------------------------------------------
     # Export
     # ------------------------------------------------------------------
 
@@ -409,7 +437,7 @@ class Gesture(TemporalObject):
                 ticksPerBeat=ticksPerBeat,
             )
             phonons.append(p)
-
+            print(p)
         g = cls(
             startOffsetSec,
             phonons=phonons,
