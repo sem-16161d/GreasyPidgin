@@ -340,6 +340,77 @@ class Envelope:
         plt.tight_layout()
         plt.show()
 
+    def displayAscii(self, maxWidth: int = 60, maxHeight: int = 20, use_normalized: bool = False) -> str:
+        """
+        Print a terminal-friendly ASCII rendering of the envelope using 'O'
+        characters — a counterpart to display() for when a matplotlib
+        window isn't available or wanted (e.g. over ssh, in a log).
+
+        The envelope's piecewise-linear shape is sampled one column at a
+        time (via getValue()) rather than only plotting the breakpoints,
+        so curved-looking or steep segments still read as a continuous
+        line rather than scattered dots.
+
+        maxWidth  : number of character columns spanning the x-axis
+        maxHeight : number of character rows spanning the y-axis
+        use_normalized : label the axes in normalized [0,1] coordinates
+                          instead of the original x_range/y_range domain
+                          (the traced shape itself is identical either way)
+
+        Returns the rendered string (also printed) so it can be captured
+        or logged.
+        """
+        if not getattr(self, "points", None):
+            raise ValueError("Envelope.displayAscii: empty envelope")
+
+        width  = max(2, int(maxWidth))
+        height = max(2, int(maxHeight))
+
+        # sample the piecewise-linear envelope at one x per column
+        rows = []
+        for col in range(width):
+            xNorm = col / (width - 1)
+            yNorm = self.getValue(xNorm, normalizedX=True, normalizedY=True)
+            yNorm = min(1.0, max(0.0, float(yNorm)))
+            rows.append(int(round((1.0 - yNorm) * (height - 1))))
+
+        # plot each column, connecting to the previous column's row with a
+        # vertical run of 'O's so steep segments don't look like dotted gaps
+        grid = [[" "] * width for _ in range(height)]
+        grid[rows[0]][0] = "O"
+        for col in range(1, width):
+            r0, r1 = rows[col - 1], rows[col]
+            lo, hi = (r0, r1) if r0 <= r1 else (r1, r0)
+            for r in range(lo, hi + 1):
+                grid[r][col] = "O"
+
+        if use_normalized or self.x_range is None or self.y_range is None:
+            xLabel = "x: [0, 1] (normalized)"
+            yTop, yBottom = "1", "0"
+        else:
+            x_min, x_max = self.x_range
+            y_min, y_max = self.y_range
+            xLabel = f"x: [{x_min:g}, {x_max:g}]"
+            yTop, yBottom = f"{y_max:g}", f"{y_min:g}"
+
+        yLabelWidth = max(len(yTop), len(yBottom))
+        lines = []
+        for r, rowChars in enumerate(grid):
+            if r == 0:
+                label = yTop
+            elif r == height - 1:
+                label = yBottom
+            else:
+                label = ""
+            lines.append(f"{label:>{yLabelWidth}} | {''.join(rowChars)}")
+
+        lines.append(" " * (yLabelWidth + 1) + "+" + "-" * (width + 1))
+        lines.append(" " * (yLabelWidth + 3) + xLabel)
+
+        art = "\n".join(lines)
+        print(art)
+        return art
+
     def _get_y_values(self, normalized: bool = False):
         """
         Return a list of y-values.
