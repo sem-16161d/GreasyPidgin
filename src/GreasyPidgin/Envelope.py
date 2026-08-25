@@ -459,6 +459,40 @@ class Envelope:
         mode_val= counts.most_common()[-1][0]
         return float(mode_val)
 
+    def histogram(self, normalized: bool = False, rounding: int = 6, sortBy: str = "value") -> dict:
+        """
+        Count how often each unique y-value appears among this envelope's
+        breakpoints (the same Counter machinery behind most_common_y() /
+        least_common_y(), exposed as the full distribution).
+
+        normalized : count normalized [0,1] y-values instead of the
+                      original y_range domain
+        rounding   : decimal places used to bucket near-identical floats
+                      together, so e.g. 0.30000000004 and 0.3 count as
+                      the same value (matches most_common_y/least_common_y)
+        sortBy     : 'value' (ascending y, default) or 'count' (most
+                      frequent first)
+
+        Returns {yValue: count, ...}.
+        """
+        ys = self._get_y_values(normalized=normalized)
+        if not ys:
+            raise ValueError("Envelope.histogram: no y-values to analyze")
+
+        rounded = [round(float(y), rounding) for y in ys]
+        counts = Counter(rounded)
+
+        if sortBy == "value":
+            items = sorted(counts.items(), key=lambda kv: kv[0])
+        elif sortBy == "count":
+            items = counts.most_common()
+        else:
+            raise ValueError(
+                f"Envelope.histogram: unknown sortBy {sortBy!r} (use 'value' or 'count')"
+            )
+
+        return {k: v for k, v in items}
+
     def mean_y(self, normalized: bool = False):
         ys = self._get_y_values(normalized=normalized)
         if not ys:

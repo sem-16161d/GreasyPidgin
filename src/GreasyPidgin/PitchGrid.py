@@ -38,7 +38,9 @@ Example
     )
     pg.toMidi('/tmp/dorian.mid')
 """
-
+from random import random
+from GreasyPidgin.Normalisation import scale
+from GreasyPidgin.Envelope import Envelope
 from GreasyPidgin.Grid import Grid
 from GreasyPidgin.Pitch import mtof, forceIntoRangeMidi
 from GreasyPidgin.TuningSystemAndScaleMask import (
@@ -431,6 +433,13 @@ class PitchGrid(Grid):
 
         return sorted(ratings)
 
+    def melodicContourFromEnvelope(self,env = Envelope([random() for _ in range(5)]), numNotes=16):
+        melodicContourMidi = []
+        for n in range(numNotes):
+            yNorm = env.getValue(n/(numNotes-1), True,True)
+            yPitchPG = self.quantise(scale(yNorm, 0, 1, self.lowestPitch, self.highestPitch))
+            melodicContourMidi.append(yPitchPG)
+        return melodicContourMidi
     # ------------------------------------------------------------------
     # Conversion
     # ------------------------------------------------------------------
