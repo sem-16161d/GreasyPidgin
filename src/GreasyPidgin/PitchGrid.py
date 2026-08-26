@@ -433,10 +433,60 @@ class PitchGrid(Grid):
 
         return sorted(ratings)
 
+    def constrainToRange(
+        self,
+        lowestPitch: float | str = 48.0,
+        highestPitch: float | str = 84.0,
+        *,
+        pitchUnit: str = 'midi',
+        referenceAHz: float | None = None,
+    ) -> "PitchGrid":
+        """
+        Return a new PitchGrid with every pitch octave-folded into
+        [lowestPitch, highestPitch] (via Pitch.forceIntoRangeMidi).
+
+        Keeps the same tuning system / mask / pitch classes but
+        transposes them to fit a target register -- e.g. an
+        instrument's playable range from STANDARD_INSTRUMENTS:
+
+            grid = grid.constrainToRange(*STANDARD_INSTRUMENTS['flute'].rangeMidi)
+
+        Pitches that fold onto the same value because the target
+        register is narrower than an octave-span of distinct pitch
+        classes are merged, same as any other PitchGrid (it's a set
+        of MIDI floats).
+        """
+        refAHz = self.referenceAHz if referenceAHz is None else referenceAHz
+        low  = _toMidi(lowestPitch,  refAHz, pitchUnit)
+        high = _toMidi(highestPitch, refAHz, pitchUnit)
+        if low > high:
+            raise ValueError(
+                f"PitchGrid.constrainToRange: lowestPitch ({low}) must not "
+                f"exceed highestPitch ({high})"
+            )
+
+        if not self:
+            pg = PitchGrid([], referenceAHz=refAHz)
+        else:
+            folded = {forceIntoRangeMidi(p, low, high) for p in self}
+            pg = PitchGrid(folded, referenceAHz=refAHz)
+
+        pg.lowestPitch        = low
+        pg.highestPitch       = high
+        pg.tuningSystemName   = self.tuningSystemName
+        pg.maskName           = self.maskName
+        pg.tuningSystemRoot   = self.tuningSystemRoot
+        pg.scaleRoot          = self.scaleRoot
+        return pg
+
     def melodicContourFromEnvelope(self,env = Envelope([random() for _ in range(5)]), numNotes=16):
         melodicContourMidi = []
         for n in range(numNotes):
-            yNorm = env.getValue(n/(numNotes-1), True,True)
+            # numNotes == 1 has no span to spread across (n/(numNotes-1)
+            # would divide by zero) -- a single note just samples the
+            # envelope's start value.
+            xNorm = n / (numNotes - 1) if numNotes > 1 else 0.0
+            yNorm = env.getValue(xNorm, True,True)
             yPitchPG = self.quantise(scale(yNorm, 0, 1, self.lowestPitch, self.highestPitch))
             melodicContourMidi.append(yPitchPG)
         return melodicContourMidi

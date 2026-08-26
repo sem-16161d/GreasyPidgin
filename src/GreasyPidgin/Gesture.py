@@ -283,14 +283,41 @@ class Gesture(TemporalObject):
         pitches     = ensureList(pitches)
         dynamics    = ensureList(dynamics)
 
-        # convert startOffset to seconds
+        if size > 0:
+            for name, values in (
+                ("startDeltas", startDeltas),
+                ("durations",   durations),
+                ("pitches",     pitches),
+                ("dynamics",    dynamics),
+            ):
+                if not values:
+                    raise ValueError(
+                        f"Gesture.fromLists: {name} must not be empty when size > 0 "
+                        f"(each parallel list is cycled modulo its length, so an "
+                        f"empty list has nothing to cycle through)"
+                    )
+
+        # startSec is only for the Gesture's own absolute startTimeSec
+        # (below) -- it must NOT be used as the base for the per-Phonon
+        # accumulation that follows. Each Phonon does its own single
+        # beats<->seconds conversion via timeUnit=timeUnit, bpm=bpm
+        # (exactly like `duration` is passed through unconverted above).
+        # Using this already-converted-to-seconds startSec as that base
+        # instead of the raw startOffset silently double-converts it --
+        # invisible when bpm happens to be 60 (beatToSec(beatToSec(x,60),60)
+        # == x), but for any other bpm it corrupts every note's timing and
+        # compounds as deltas accumulate across notes.
         if timeUnit in ('beats', 'b'):
             startSec = beatToSec(startOffset, bpm)
         else:
             startSec = float(startOffset)
 
         phonons: list[Phonon] = []
-        lastStart = startSec - float(startDeltas[0])  # so first note lands at startSec
+        # so first note lands at startOffset (which Phonon then converts to
+        # startSec itself); startDeltas is only empty when size == 0
+        # (guarded above), in which case the loop below never runs and
+        # this value is never actually used
+        lastStart = startOffset - float(startDeltas[0]) if startDeltas else startOffset
 
         for i in range(size):
             delta    = float(startDeltas[i % len(startDeltas)])
