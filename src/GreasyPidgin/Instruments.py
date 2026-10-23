@@ -58,8 +58,8 @@ STANDARD_INSTRUMENTS: dict = {
         missing_notes=_missing("cqs4", "dqf4"),
         midi_program=74,
     ),
-    "alto-flute": Instrument(
-        name="alto flute",
+    "altoFlute": Instrument(
+        name="altoFlute",
         rangeMidi=(nm("c4"), nm("c7")),
         numSystems=1,
         initClefs=["treble"],
@@ -70,8 +70,8 @@ STANDARD_INSTRUMENTS: dict = {
         missing_notes=_missing("cqs4", "dqf4"),
         midi_program=74,
     ),
-    "bass-flute": Instrument(
-        name="bass flute",
+    "bassFlute": Instrument(
+        name="bassFlute",
         rangeMidi=(nm("c4"), nm("c7")),
         numSystems=1,
         initClefs=["treble"],
@@ -83,7 +83,7 @@ STANDARD_INSTRUMENTS: dict = {
         midi_program=74,
     ),
     "sopranino-recorder": Instrument(
-        name="sopranino recorder",
+        name="sopraninoRecorder",
         rangeMidi=(nm("f4"), nm("g6")),
         numSystems=1,
         initClefs=["treble"],
@@ -95,7 +95,7 @@ STANDARD_INSTRUMENTS: dict = {
         midi_program=75,
     ),
     "soprano-recorder": Instrument(
-        name="soprano recorder",
+        name="sopranoRecorder",
         rangeMidi=(nm("c4"), nm("d6")),
         numSystems=1,
         initClefs=["treble"],
@@ -107,7 +107,7 @@ STANDARD_INSTRUMENTS: dict = {
         midi_program=75,
     ),
     "alto-recorder": Instrument(
-        name="alto recorder",
+        name="altoRecorder",
         rangeMidi=(nm("f4"), nm("g6")),
         numSystems=1,
         initClefs=["treble"],
@@ -119,7 +119,7 @@ STANDARD_INSTRUMENTS: dict = {
         midi_program=75,
     ),
     "tenor-recorder": Instrument(
-        name="tenor recorder",
+        name="tenorRecorder",
         rangeMidi=(nm("c4"), nm("d6")),
         numSystems=1,
         initClefs=["treble"],
@@ -131,7 +131,7 @@ STANDARD_INSTRUMENTS: dict = {
         midi_program=75,
     ),
     "consort-tenor-recorder": Instrument(
-        name="consort tenor recorder",
+        name="consortTenorRecorder",
         rangeMidi=(nm("c4"), nm("a5")),
         numSystems=1,
         initClefs=["treble"],
@@ -143,7 +143,7 @@ STANDARD_INSTRUMENTS: dict = {
         midi_program=75,
     ),
     "bass-recorder": Instrument(
-        name="bass recorder",
+        name="bassRecorder",
         rangeMidi=(nm("f2"), nm("f4")),
         numSystems=1,
         initClefs=["bass"],
@@ -170,8 +170,8 @@ STANDARD_INSTRUMENTS: dict = {
         missing_notes=_missing("bqf3", "bqs3", "cqs4", "dqf4"),
         midi_program=69,
     ),
-    "cor-anglais": Instrument(
-        name="cor anglais",
+    "corAnglais": Instrument(
+        name="corAnglais",
         rangeMidi=(nm("bf3"), nm("a6")),
         numSystems=1,
         initClefs=["treble"],
@@ -183,7 +183,7 @@ STANDARD_INSTRUMENTS: dict = {
         midi_program=70,
     ),
     "oboe-d-amore": Instrument(
-        name="oboe d'amore",
+        name="oboeDAmore",
         rangeMidi=(nm("bf3"), nm("a6")),
         numSystems=1,
         initClefs=["treble"],
@@ -198,8 +198,8 @@ STANDARD_INSTRUMENTS: dict = {
     # -----------------------------------------------------------------------
     # Clarinets
     # -----------------------------------------------------------------------
-    "e-flat-clarinet": Instrument(
-        name="E-flat clarinet",
+    "EbClarinet": Instrument(
+        name="EbClarinet",
         rangeMidi=(nm("e3"), nm("a6")),
         numSystems=1,
         initClefs=["treble"],
@@ -213,8 +213,8 @@ STANDARD_INSTRUMENTS: dict = {
         ),
         midi_program=72,
     ),
-    "b-flat-clarinet": Instrument(
-        name="B-flat clarinet",
+    "BbClarinet": Instrument(
+        name="BbClarinet",
         rangeMidi=(nm("e3"), nm("a6")),
         numSystems=1,
         initClefs=["treble"],
@@ -228,8 +228,8 @@ STANDARD_INSTRUMENTS: dict = {
         ),
         midi_program=72,
     ),
-    "a-clarinet": Instrument(
-        name="A clarinet",
+    "AClarinet": Instrument(
+        name="AClarinet",
         rangeMidi=(nm("e3"), nm("a6")),
         numSystems=1,
         initClefs=["treble"],
@@ -243,8 +243,8 @@ STANDARD_INSTRUMENTS: dict = {
         ),
         midi_program=72,
     ),
-    "bass-clarinet": Instrument(
-        name="bass clarinet",
+    "bassClarinet": Instrument(
+        name="bassClarinet",
         rangeMidi=(nm("c3"), nm("g6")),
         numSystems=1,
         initClefs=["treble"],
@@ -263,8 +263,8 @@ STANDARD_INSTRUMENTS: dict = {
     # -----------------------------------------------------------------------
     # Saxophones
     # -----------------------------------------------------------------------
-    "sopranino-sax": Instrument(
-        name="sopranino saxophone",
+    "sopraninoSaxophone": Instrument(
+        name="sopraninoSaxophone",
         rangeMidi=(nm("bf3"), nm("fs6")),
         numSystems=1,
         initClefs=["treble"],
@@ -275,8 +275,8 @@ STANDARD_INSTRUMENTS: dict = {
         missing_notes=_missing("gqs4", "gqs5"),
         midi_program=65,
     ),
-    "soprano-sax": Instrument(
-        name="soprano saxophone",
+    "sopranoSaxophone": Instrument(
+        name="sopranoSaxophone",
         rangeMidi=(nm("bf3"), nm("fs6")),
         numSystems=1,
         initClefs=["treble"],
@@ -287,8 +287,8 @@ STANDARD_INSTRUMENTS: dict = {
         missing_notes=_missing("gqs4", "gqs5"),
         midi_program=65,
     ),
-    "alto-sax": Instrument(
-        name="alto saxophone",
+    "altoSaxophone": Instrument(
+        name="altoSaxophone",
         rangeMidi=(nm("bf3"), nm("fs6")),
         numSystems=1,
         initClefs=["treble"],
@@ -299,8 +299,8 @@ STANDARD_INSTRUMENTS: dict = {
         missing_notes=_missing("gqs4", "gqs5"),
         midi_program=66,
     ),
-    "tenor-sax": Instrument(
-        name="tenor saxophone",
+    "tenorSaxophone": Instrument(
+        name="tenorSaxophone",
         rangeMidi=(nm("bf3"), nm("fs6")),
         numSystems=1,
         initClefs=["treble"],
@@ -311,8 +311,8 @@ STANDARD_INSTRUMENTS: dict = {
         missing_notes=_missing("gqs4", "gqs5"),
         midi_program=67,
     ),
-    "baritone-sax": Instrument(
-        name="baritone saxophone",
+    "baritoneSaxophone": Instrument(
+        name="baritoneSaxophone",
         rangeMidi=(nm("bf3"), nm("fs6")),
         numSystems=1,
         initClefs=["treble"],
@@ -341,7 +341,7 @@ STANDARD_INSTRUMENTS: dict = {
         ),
         midi_program=71,
     ),
-    "contra-bassoon": Instrument(
+    "contrabassoon": Instrument(
         name="contrabassoon",
         rangeMidi=(nm("bf1"), nm("a4")),
         numSystems=1,
@@ -359,8 +359,8 @@ STANDARD_INSTRUMENTS: dict = {
     # -----------------------------------------------------------------------
     # Horns, trumpets, trombones, tuba
     # -----------------------------------------------------------------------
-    "french-horn": Instrument(
-        name="french horn",
+    "frenchHorn": Instrument(
+        name="frenchHorn",
         rangeMidi=(nm("f2"), nm("c6")),
         numSystems=1,
         initClefs=["treble"],
@@ -371,8 +371,8 @@ STANDARD_INSTRUMENTS: dict = {
         missing_notes=_missing(),
         midi_program=61,
     ),
-    "french-horn-high": Instrument(
-        name="french horn (high)",
+    "frenchHornHi": Instrument(
+        name="frenchHornHi",
         rangeMidi=(nm("g3"), nm("c6")),
         numSystems=1,
         initClefs=["treble"],
@@ -383,8 +383,8 @@ STANDARD_INSTRUMENTS: dict = {
         missing_notes=_missing(),
         midi_program=61,
     ),
-    "french-horn-low": Instrument(
-        name="french horn (low)",
+    "frenchHornLo": Instrument(
+        name="frenchHornLo)",
         rangeMidi=(nm("f2"), nm("g5")),
         numSystems=1,
         initClefs=["treble"],
@@ -395,8 +395,8 @@ STANDARD_INSTRUMENTS: dict = {
         missing_notes=_missing(),
         midi_program=61,
     ),
-    "c-trumpet": Instrument(
-        name="trumpet in C",
+    "CTrumpet": Instrument(
+        name="CTrumpet",
         rangeMidi=(nm("fs3"), nm("c6")),
         numSystems=1,
         initClefs=["treble"],
@@ -407,8 +407,8 @@ STANDARD_INSTRUMENTS: dict = {
         missing_notes=_missing(),
         midi_program=57,
     ),
-    "b-flat-trumpet": Instrument(
-        name="B-flat trumpet",
+    "BbTrumpet": Instrument(
+        name="BbTrumpet",
         rangeMidi=(nm("fs3"), nm("d6")),
         numSystems=1,
         initClefs=["treble"],
@@ -419,8 +419,8 @@ STANDARD_INSTRUMENTS: dict = {
         missing_notes=_missing(),
         midi_program=57,
     ),
-    "tenor-trombone": Instrument(
-        name="tenor trombone",
+    "tenorTrombone": Instrument(
+        name="tenorTrombone",
         rangeMidi=(nm("e2"), nm("bf4")),
         numSystems=1,
         initClefs=["bass"],
@@ -431,8 +431,8 @@ STANDARD_INSTRUMENTS: dict = {
         missing_notes=_missing(),
         midi_program=58,
     ),
-    "bass-trombone": Instrument(
-        name="bass trombone",
+    "bassTrombone": Instrument(
+        name="bassTrombone",
         rangeMidi=(nm("e1"), nm("g4")),
         numSystems=1,
         initClefs=["bass"],
@@ -815,7 +815,7 @@ STANDARD_INSTRUMENTS: dict = {
         missing_notes=_missing(),
         midi_program=43,
     ),
-    "double-bass": Instrument(
+    "doubleBass": Instrument(
         name="double bass",
         rangeMidi=(nm("e2"), nm("g5")),
         numSystems=1,

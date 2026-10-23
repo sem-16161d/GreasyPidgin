@@ -293,10 +293,17 @@ class MidiExporter(Exporter):
             startSem = endSem = diff
 
         # --- velocity ---
+        # dB window -> velocity window. Defaults are the legacy 0..100 dB ->
+        # 0..127; a Phonon given MIDI-velocity dynamics supplies its own
+        # window (minDb/maxDb/minVelocity/maxVelocity) so its velocity
+        # round-trips exactly instead of being re-scaled.
         dynamicdB = float(leaf.data.get("dynamicdB", 100.0))
         minDb     = float(leaf.data.get("minDb",     0.0))
         maxDb     = float(leaf.data.get("maxDb",     100.0))
-        velocity  = int(round(127 * normaliseIntoRange(dynamicdB, minDb, maxDb)))
+        minVel    = float(leaf.data.get("minVelocity", 0.0))
+        maxVel    = float(leaf.data.get("maxVelocity", 127.0))
+        norm      = normaliseIntoRange(dynamicdB, minDb, maxDb)
+        velocity  = int(round(minVel + norm * (maxVel - minVel)))
         velocity  = max(1, min(127, velocity))
 
         # --- microtonal annotation ---

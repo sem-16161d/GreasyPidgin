@@ -284,8 +284,19 @@ class Phonon(TemporalObject):
         """
         mindB    = 20.0
         maxdB    = 120.0
-        minVelo  = 10
+        minVelo  = 1       # MIDI velocity 0 is note-off, so 1 is the floor
         maxVelo  = 127
+
+        # Calibration handed to MidiExporter alongside dynamicdB so it can
+        # map dB back to exactly the velocity scale the value came from.
+        # Only attached for dynamicUnit='midi' -- raw dB input keeps the
+        # exporter's legacy 0..100 dB -> 0..127 window.
+        calibration = {
+            "minDb":        mindB,
+            "maxDb":        maxdB,
+            "minVelocity":  minVelo,
+            "maxVelocity":  maxVelo,
+        }
 
         if isinstance(dynamic, str):
             self.data["dynamicMarking"] = dynamic.strip()
@@ -295,7 +306,7 @@ class Phonon(TemporalObject):
 
         def toDB(val: float) -> float:
             match dynamicUnit:
-                case 'midi': return scale(val, minVelo, maxVelo, mindB, maxdB)
+                case 'midi': return scale(val, minVelo, maxVelo, mindB, maxdB, clipToRange=True)
                 case 'dB':   return float(val)
                 case _: raise ValueError(f"Phonon: unknown dynamicUnit '{dynamicUnit}'")
 
@@ -317,11 +328,15 @@ class Phonon(TemporalObject):
             # note-on velocity reflects the dynamic's starting value,
             # so a hairpin's attack is actually audible, not just its CC ramp
             self.data["dynamicdB"] = toDB(float(dynamic[0]))
+            if dynamicUnit == 'midi':
+                self.data.update(calibration)
 
         else:
             # single value → flat, used as velocity only
             dB = toDB(float(dynamic))
             self.data["dynamicdB"] = dB
+            if dynamicUnit == 'midi':
+                self.data.update(calibration)
             self.envelopes["dynamic"] = Envelope(
                 [(0.0, dB), (durationSec, dB)]
             ).rescale([0, durationSec])
@@ -496,6 +511,22 @@ class Phonon(TemporalObject):
                 for key in passthroughKeys:
                     child.envelopes[key] = self.envelopes[key]
 
+    def _attachDynamicCalibration(self, newChildren: list) -> None:
+        """
+        Copy the dB<->velocity calibration written by _parseDynamic onto
+        the unfolded leaves, so MidiExporter turns dynamicdB back into
+        the exact velocity the Phonon was given.
+        """
+        cal = {
+            k: self.data[k]
+            for k in ("minDb", "maxDb", "minVelocity", "maxVelocity")
+            if k in self.data
+        }
+        if not cal:
+            return
+        for child in newChildren:
+            child.data.update(cal)
+
     def _attachDynamicMarking(self, newChildren: list) -> None:
         """
         Propagate this Phonon's dynamic-marking text (if any) onto every
@@ -561,6 +592,7 @@ class Phonon(TemporalObject):
             ))
             self._attachLyric(newChildren)
             self._attachEnvelopes(newChildren)
+            self._attachDynamicCalibration(newChildren)
             self._attachDynamicMarking(newChildren)
             self.children = (
                 [c for c in self.children if isinstance(c, Phonon)]
@@ -629,6 +661,7 @@ class Phonon(TemporalObject):
 
         self._attachLyric(newChildren)
         self._attachEnvelopes(newChildren)
+        self._attachDynamicCalibration(newChildren)
         self._attachDynamicMarking(newChildren)
 
         # replace only the non-Phonon children (Phonons were already unfolded)
