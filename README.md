@@ -15,7 +15,6 @@
 
 ```
 
-Deutsche Version unter: https://gitea.com/sem-16161d/GreasyPidgin/src/branch/main/TUTORIAL/DE/installation.md
 
 # What is GreasyPidgin?
 
