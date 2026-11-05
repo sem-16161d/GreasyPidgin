@@ -1,5 +1,0 @@
-numpy
-matplotlib
-musicscore
-mido
-python-osc

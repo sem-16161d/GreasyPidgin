@@ -1,7 +1,4 @@
 
-from re import I
-
-
 def flatten(x):
     if isinstance(x, list):
         for item in x:
@@ -13,10 +10,10 @@ def flatten(x):
         yield x
 
 def isNested(iterable):
-    bool = False
+    nested = False
     if isinstance(iterable,(list,tuple,set)):
-        bool = all([isinstance(iter, (tuple, list)) for iter in iterable])
-    return bool
+        nested = all([isinstance(item, (tuple, list)) for item in iterable])
+    return nested
 
 def ensureList(value):
     if isinstance(value, (int, float, str)):

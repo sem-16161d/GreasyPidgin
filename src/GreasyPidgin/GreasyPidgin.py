@@ -14,21 +14,20 @@ class GreasyPidgin(TemporalObject):
             self,
             name = "GreasyPidgin",
             *,
-            ensemble = Ensemble(),
-            timeGrid = TimeGrid(),
-            pitchGrid = PitchGrid(),
-            dynamicGrid = DynamicGrid(),
-            temporalObjects = [],
+            ensemble = None,
+            timeGrid = None,
+            pitchGrid = None,
+            dynamicGrid = None,
+            temporalObjects = None,
             startTimeSec = 0.0,
-            durationSec = 0.0, 
-            bpm = 60,
+            durationSec = 0.0,
             ):
         self.name = name
-        self.ensemble = _ensureType(ensemble, Ensemble)
-        self.timeGrid = _ensureType(timeGrid, TimeGrid)
-        self.pitchGrid = _ensureType(pitchGrid, PitchGrid)
-        self.dynamicGrid = _ensureType(dynamicGrid, DynamicGrid)
-        super().__init__(startTimeSec, durationSec,bpm = bpm)
+        self.ensemble = _ensureType(Ensemble() if ensemble is None else ensemble, Ensemble)
+        self.timeGrid = _ensureType(TimeGrid() if timeGrid is None else timeGrid, TimeGrid)
+        self.pitchGrid = _ensureType(PitchGrid() if pitchGrid is None else pitchGrid, PitchGrid)
+        self.dynamicGrid = _ensureType(DynamicGrid() if dynamicGrid is None else dynamicGrid, DynamicGrid)
+        super().__init__(startTimeSec, durationSec, temporalObjects)
 
     def __repr__(self):
         return (
@@ -44,7 +43,7 @@ class GreasyPidgin(TemporalObject):
         \\ PIDGIN  0) 0)0 );)`--,__
          \\,    _:0) 0)0_);;):;)-->>
            "-,   ,--´
-              \,/
+              \\,/
             ,_//
            ,_-'-,
 

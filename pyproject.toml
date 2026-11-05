@@ -7,7 +7,7 @@ name = "GreasyPidgin"
 version = "0.9.2"
 description = "Algorithmic composition toolkit inspired by slippery chicken"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 license = { text = "MIT" } 
 authors = [
   { name = "Sem Ribeiro Albuquerque Wendt", email = "sem@16161d.net" }
@@ -16,10 +16,17 @@ authors = [
 dependencies = [
   "numpy",
   "matplotlib",
-  "musicscore",
   "mido",
   "python-osc",
 ]
+
+[project.optional-dependencies]
+xml = ["music21"]
+test = ["pytest"]
+
+[tool.pytest.ini_options]
+testpaths = ["test"]
+pythonpath = ["src"]
 
 [project.urls]
 Homepage = "https://github.com/sem-16161d/GreasyPidgin"

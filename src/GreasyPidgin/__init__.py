@@ -76,7 +76,7 @@ from .Dynamics import (
 # Algorithmic tools
 # ---------------------------------------------------------------------------
 from .CellularAutomata  import CellularAutomaton, CellularRules
-from .LSystem           import LSystem, ProductionRule, ProductionRules
+from .LSystem           import LSystem, ProductionRule, ProductionRules, Turtle, TurtleResult, TurtleSegment
 from .MarkovChains      import MarkovChain, MarkovRule, MarkovRules
 
 # ---------------------------------------------------------------------------
@@ -91,54 +91,6 @@ from .Normalisation     import scale
 from .IterableOperations import flatten
 
 # ---------------------------------------------------------------------------
-# Top-level GreasyPidgin composition object (legacy, kept for compatibility)
+# Top-level composition object
 # ---------------------------------------------------------------------------
-from .TemporalObject import TemporalObject as _TemporalObject
-
-
-def _ensureType(obj, cls):
-    if not isinstance(obj, cls):
-        obj = cls(obj)
-    return obj
-
-
-class GreasyPidgin(_TemporalObject):
-    """
-    Top-level composition container.
-
-    Holds an ensemble, a TimeGrid, a PitchGrid, and a collection of
-    TemporalObjects (Gestures, Phrases, etc.).
-    """
-
-    def __init__(
-        self,
-        name:             str   = "GreasyPidgin",
-        *,
-        timeGrid:         TimeGrid  | None = None,
-        pitchGrid:        PitchGrid | None = None,
-        temporalObjects:  list            = None,
-        startTimeSec:     float           = 0.0,
-        durationSec:      float           = 0.0,
-        bpm:              float           = 60.0,
-    ) -> None:
-        self.name          = name
-        self.timeGrid      = timeGrid  if timeGrid  is not None else TimeGrid([])
-        self.pitchGrid     = pitchGrid if pitchGrid is not None else PitchGrid([])
-        super().__init__(
-            startTimeSec,
-            durationSec,
-            bpm      = bpm,
-            children = temporalObjects or [],
-        )
-
-    def __repr__(self) -> str:
-        return (
-            f"GreasyPidgin(\n"
-            f"  name       : {self.name}\n"
-            f"  version    : {__version__}\n"
-            f"  start      : {self.startTimeSec:.3f}s\n"
-            f"  duration   : {self.durationSec:.3f}s\n"
-            f"  bpm        : {self.bpm}\n"
-            f"  children   : {len(self.children)}\n"
-            f")"
-        )
+from .GreasyPidgin import GreasyPidgin
