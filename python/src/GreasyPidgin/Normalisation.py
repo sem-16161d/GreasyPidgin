@@ -21,12 +21,9 @@ def scale(value, in_lo, in_hi, out_lo, out_hi, exponent=1.0, clipToRange=False):
     if in_lo == in_hi:
         return out_lo
 
-    # allow reversed input range
-    if in_lo > in_hi:
-        in_lo, in_hi = in_hi, in_lo
-
+    # reversed input range (in_lo > in_hi) inverts the mapping, like Max
     if clipToRange:
-        value = float(clip(value, in_lo, in_hi))
+        value = float(clip(value, min(in_lo, in_hi), max(in_lo, in_hi)))
 
     # normalize to 0..1
     t = (value - in_lo) / (in_hi - in_lo)

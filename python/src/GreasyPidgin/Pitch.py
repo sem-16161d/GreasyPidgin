@@ -99,7 +99,7 @@ def spntom(spn: str) -> float:
     return 12.0 * (octave + 1) + base_semitones + offset
 
 def spntof(spn: str, referenceA4: float = 440.0):
-    return mtof(spntom(spn))
+    return mtof(spntom(spn), referenceA4)
 
 def ftom(freq: float, referenceA4: float = 440.0) -> float:
     f = float(freq)

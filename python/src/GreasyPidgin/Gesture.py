@@ -313,11 +313,11 @@ class Gesture(TemporalObject):
             startSec = float(startOffset)
 
         phonons: list[Phonon] = []
-        # so first note lands at startOffset (which Phonon then converts to
-        # startSec itself); startDeltas is only empty when size == 0
-        # (guarded above), in which case the loop below never runs and
-        # this value is never actually used
-        lastStart = startOffset - float(startDeltas[0]) if startDeltas else startOffset
+        # Phonon times are relative to the Gesture, which already starts at
+        # startSec, so the first note lands at 0; startDeltas is only empty
+        # when size == 0 (guarded above), in which case the loop below never
+        # runs and this value is never actually used
+        lastStart = -float(startDeltas[0]) if startDeltas else 0.0
 
         for i in range(size):
             delta    = float(startDeltas[i % len(startDeltas)])

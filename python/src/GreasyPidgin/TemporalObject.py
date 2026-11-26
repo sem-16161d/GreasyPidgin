@@ -42,8 +42,10 @@ class TemporalObject:
 
     @classmethod
     def _allocateId(cls) -> int:
-        id_ = cls._nextId
-        cls._nextId += 1
+        # one counter on the base class: cls._nextId += 1 would give every
+        # subclass its own counter and duplicate ids across types
+        id_ = TemporalObject._nextId
+        TemporalObject._nextId += 1
         return id_
 
     # ------------------------------------------------------------------

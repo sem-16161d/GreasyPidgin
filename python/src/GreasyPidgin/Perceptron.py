@@ -25,7 +25,7 @@ class Perceptron():
             case "tanh":
                 output = np.tanh(net_input)
             case "identity":
-                output = output
+                output = net_input
             case "ReLu":
                 output = np.where(net_input > 0, net_input, 0)
         return output

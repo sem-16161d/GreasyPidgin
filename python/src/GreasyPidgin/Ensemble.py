@@ -39,11 +39,7 @@ class Ensemble(dict):
 
    
     def getPlayer(self, name: str):
-        name = str(name)
-        for p in self.players:
-            if p.name == name:
-                return p
-        return None
+        return self.get(str(name))
 
     # -------------------------------------------------
     # debug

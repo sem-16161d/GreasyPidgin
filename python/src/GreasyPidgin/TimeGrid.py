@@ -1191,6 +1191,8 @@ class TimeGrid(Grid):
     # ------------------------------------------------------------------
     # Analysis
     # ------------------------------------------------------------------
+
+    def toRelativeTimes(self, unit: str = 'seconds') -> list[float]:
         """
         Return inter-onset intervals between consecutive grid points.
 
