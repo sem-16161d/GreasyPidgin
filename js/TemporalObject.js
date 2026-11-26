@@ -41,20 +41,20 @@ function deepCopy(value, memo = new Map()) {
         for (const v of value) out.push(deepCopy(v, memo));
         return out;
     }
+    // Set / Map subclasses (e.g. Grid) need the built-in's internal storage,
+    // so they are created via Reflect.construct without running their constructor
     if (value instanceof Map) {
-        out = new Map();
+        out = Reflect.construct(Map, [], value.constructor);
         memo.set(value, out);
         for (const [k, v] of value) out.set(deepCopy(k, memo), deepCopy(v, memo));
-        return out;
-    }
-    if (value instanceof Set) {
-        out = new Set();
+    } else if (value instanceof Set) {
+        out = Reflect.construct(Set, [], value.constructor);
         memo.set(value, out);
         for (const v of value) out.add(deepCopy(v, memo));
-        return out;
+    } else {
+        out = Object.create(Object.getPrototypeOf(value));
+        memo.set(value, out);
     }
-    out = Object.create(Object.getPrototypeOf(value));
-    memo.set(value, out);
     for (const k of Object.keys(value)) out[k] = deepCopy(value[k], memo);
     return out;
 }
