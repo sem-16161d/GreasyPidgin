@@ -98,9 +98,15 @@ class Envelope:
         self.poly_fits = {}
         self.coefficients = {}  # <- NEW: store poly coefficients by degree
         self.curves = []        # per-segment curve shapes (len(points) - 1)
+        self.points = []        # normalized (x, y) breakpoints
+        self.x_range = None
+        self.y_range = None
+        self.reducedEnv = None  # set by reduceEnvPoints()
 
         if data is None:
             return
+        if isinstance(data, np.ndarray):
+            data = data.tolist()
 
         if self._is_pair_list(data):
             env = self.from_pairs(
@@ -127,7 +133,6 @@ class Envelope:
         self.curves = env.curves
         self.poly_fits = env.poly_fits
         self.coefficients = env.coefficients
-        self.reducedEnv = Envelope()
         if polyFit:
             self.recalculatePolynomials()
 
@@ -499,8 +504,7 @@ class Envelope:
         self.curves = new.curves
         self.poly_fits = new.poly_fits
         self.coefficients = new.coefficients
-        if hasattr(self, "reducedEnv"):
-            self.reducedEnv = Envelope()   # derived from the old points
+        self.reducedEnv = None   # was derived from the old points
         return self
 
     def withBounds(self, minEnv=None, maxEnv=None, normalizedX: bool = True,
@@ -587,8 +591,7 @@ class Envelope:
         if len(pairs) == 1:
             pairs.append([x_max, pairs[0][1]])
         out = Envelope.from_pairs(pairs)
-        if x_max != x_min:
-            out.x_range = (x_min, x_max)
+        out.x_range = (x_min, x_max)
         return self._finish_modification(out, overwriteOriginal)
 
     def withCurves(self, curves, overwriteOriginal: bool = False):
@@ -725,37 +728,30 @@ class Envelope:
     # -------------------------------------------------------------  
 
     def _internalRenderNorm(self, resolution = 20):
-        return [self.getValue(i/resolution, True, True) for i in range(resolution)]
-            
-
-    def _differentiate(self,values):
-        out = [values[0]]
-        for i,v in enumerate(values[1:]):
-            out.append(values[i]-v) 
-        return out
-
-    def _minimaMaxima(self,values):
-        differentiated = self._differentiate(values)
-        minima, maxima = [],[]
-        for i,d in enumerate(differentiated):
-            if d <=0:
-                minima.append((i, values[i], d))
-            else:
-                maxima.append((i, values[i], d))
-        minima = sorted(minima, key= lambda v: v[2])
-        maxima = sorted(maxima, key= lambda v: v[2])
-        return minima, maxima
+        """`resolution` normalized y samples from x = 0 to x = 1 (both included)."""
+        n = max(2, int(resolution))
+        return [self.getValue(i / (n - 1), True, True) for i in range(n)]
 
     def reduceEnvPoints(self, numMinima = 3, numMaxima = 3, resolution = 20):
-        values = self._internalRenderNorm(resolution)
-        mima = self._minimaMaxima(values)
-        newEnvPoints = []
-        # print(mima[0])
-        for triple in mima[0][:(numMinima+1)]:
-            newEnvPoints.append(triple[:2])
-        for triple in list(reversed(mima[1]))[:(numMaxima+1)]:
-            newEnvPoints.append(triple[:2])
-        self.reducedEnv = Envelope(newEnvPoints)
+        """
+        Simplify the envelope to its two endpoints plus its `numMinima`
+        lowest local minima and `numMaxima` highest local maxima, found on
+        the shape sampled at `resolution` points. The result keeps this
+        envelope's x/y units and is stored in (and returned as) self.reducedEnv.
+        """
+        ys = self._internalRenderNorm(resolution)
+        n = len(ys)
+        inner = range(1, n - 1)
+        minima = [i for i in inner if ys[i - 1] > ys[i] <= ys[i + 1]]
+        maxima = [i for i in inner if ys[i - 1] < ys[i] >= ys[i + 1]]
+        keep = {0, n - 1}
+        keep.update(sorted(minima, key=lambda i: ys[i])[:max(0, numMinima)])
+        keep.update(sorted(maxima, key=lambda i: -ys[i])[:max(0, numMaxima)])
+        self.reducedEnv = Envelope.from_pairs([
+            [self._x_from_norm(i / (n - 1)), self._y_from_norm(ys[i], False)]
+            for i in sorted(keep)
+        ])
+        return self.reducedEnv
 
     # -------------------------------------------------------------
     # Value lookup
@@ -806,6 +802,8 @@ class Envelope:
     # map to grids
     def mapToGrid(self, xGrid, yGrid):
         xList = xGrid.sorted()
+        if not xList:
+            return []
         xMin, xMax = min(xList), max(xList)
         xRange = xMax - xMin
         vals = [(min(xList), yGrid.quantise(self.getValue(0, True)))]
@@ -965,6 +963,16 @@ class Envelope:
 
                 plt.plot(x_dense, y_dense, "--", label=f"poly deg {deg}")
 
+        red = self.reducedEnv
+        if showReduced and red is not None and red.points:
+            rx = [red._x_from_norm(x) for x, _ in red.points]
+            ry = [red._y_from_norm(y, False) for _, y in red.points]
+            if use_normalized:
+                y_min, y_max = self.y_range
+                rx = [self._x_to_norm(x, False) for x in rx]
+                ry = [(y - y_min) / ((y_max - y_min) or 1.0) for y in ry]
+            plt.plot(rx, ry, "s--", label="reduced")
+
         plt.legend()
         plt.grid(True)
         plt.tight_layout()
@@ -1051,19 +1059,8 @@ class Envelope:
         if not self.points:
             raise ValueError("Envelope._get_y_values: envelope has no points")
 
-        ys_norm = [float(y) for _, y in self.points]
-
-        if normalized:
-            return ys_norm
-
-        if self.y_range is None:
-            raise ValueError(
-                "Envelope._get_y_values: y_range is not set; cannot denormalize."
-            )
-
-        y_min, y_max = self.y_range
-        y_span = y_max - y_min if y_max != y_min else 1.0
-        return [y_min + yn * y_span for yn in ys_norm]
+        # same mapping as getValue(), so statistics agree with the curve
+        return [self._y_from_norm(y, normalized) for _, y in self.points]
 
     # ------------------------------------------------------------------
     # Statistical descriptors on y-values
