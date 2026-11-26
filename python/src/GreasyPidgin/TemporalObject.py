@@ -48,10 +48,6 @@ class TemporalObject:
         TemporalObject._nextId += 1
         return id_
 
-    # ------------------------------------------------------------------
-    # Construction
-    # ------------------------------------------------------------------
-
     def __init__(
         self,
         startTimeSec: float = 0.0,
@@ -63,49 +59,43 @@ class TemporalObject:
         data: dict | None = None,
     ) -> None:
         self.id = self._allocateId()
-
         self.startTimeSec = float(startTimeSec)
-        self.durationSec  = float(durationSec)
-        self.endTimeSec   = self.startTimeSec + self.durationSec
-
-        self.envelopes:   dict[str, Envelope]     = dict(envelopes)   if envelopes   else {}
-        self.annotations: list[tuple[float, str]] = list(annotations) if annotations else []
-        self.data:        dict                    = dict(data)         if data        else {}
-
-        self.children: list[Self] = list(children) if children else []
-        if self.children:
-            self._refresh()
+        self.setDuration(durationSec)
+        self.envelopes:   dict[str, Envelope]     = dict(envelopes or {})
+        self.annotations: list[tuple[float, str]] = list(annotations or [])
+        self.data:        dict                    = dict(data or {})
+        self.children:    list[Self]              = list(children or [])
+        self._refresh()
 
     # ------------------------------------------------------------------
     # Internal bookkeeping
     # ------------------------------------------------------------------
 
+    def setDuration(self, durationSec: float) -> None:
+        self.durationSec = float(durationSec)
+        self.endTimeSec  = self.startTimeSec + self.durationSec
+
+    def _leafEnd(self, parentalStartSec: float) -> float:
+        """Latest absolute end time among this node's leaves."""
+        if not self.children:
+            return parentalStartSec + self.endTimeSec
+        return max(c._leafEnd(parentalStartSec + self.startTimeSec) for c in self.children)
+
     def _refresh(self) -> None:
-        """Recompute endTimeSec / durationSec from flattened leaves."""
-        leaves = self.flatten()
-        if leaves:
-            self.endTimeSec  = max(lf.endTimeSec for lf in leaves)
-            self.durationSec = self.endTimeSec - self.startTimeSec
+        """Recompute endTimeSec / durationSec from the leaves (containers only)."""
+        if self.children:
+            self.setDuration(self._leafEnd(0.0) - self.startTimeSec)
 
     # ------------------------------------------------------------------
     # Identity / copying
     # ------------------------------------------------------------------
 
     def clone(self) -> Self:
-        """
-        Deep copy of this node.
-
-        Children are deep-copied so the clone is fully independent.
-        """
-        obj              = object.__new__(self.__class__)
-        obj.id           = self._allocateId()
-        obj.startTimeSec = self.startTimeSec
-        obj.durationSec  = self.durationSec
-        obj.endTimeSec   = self.endTimeSec
-        obj.envelopes    = copy.deepcopy(self.envelopes)
-        obj.annotations  = list(self.annotations)
-        obj.data         = copy.deepcopy(self.data)
-        obj.children     = [c.clone() for c in self.children]
+        """Deep copy with fresh ids, including every subclass attribute."""
+        obj = object.__new__(self.__class__)
+        obj.__dict__.update(copy.deepcopy({k: v for k, v in vars(self).items() if k != "children"}))
+        obj.id = self._allocateId()
+        obj.children = [c.clone() for c in self.children]
         return obj
 
     # ------------------------------------------------------------------
@@ -118,9 +108,7 @@ class TemporalObject:
     def addChild(self, child: Self) -> None:
         """Append a deep copy of *child*. Child time is relative to self."""
         if not isinstance(child, TemporalObject):
-            raise TypeError(
-                f"addChild: expected TemporalObject, got {type(child).__name__}"
-            )
+            raise TypeError(f"addChild: expected TemporalObject, got {type(child).__name__}")
         self.children.append(child.clone())
         self._refresh()
 
@@ -133,61 +121,53 @@ class TemporalObject:
         self.children.sort(key=lambda o: (o.startTimeSec, o.durationSec))
 
     def clear(self) -> None:
+        """Remove all children; the node keeps its current duration."""
         self.children.clear()
-        self._refresh()
 
     # ------------------------------------------------------------------
     # Time operations
     # ------------------------------------------------------------------
 
     def shiftTime(self, deltaSec: float) -> None:
-        """Shift start and end by *deltaSec*. Does not recurse into children."""
+        """Shift start and end by *deltaSec* (children move along, their times are relative)."""
         self.startTimeSec += float(deltaSec)
         self.endTimeSec   += float(deltaSec)
 
     def stretchTime(self, factor: float) -> None:
-        """Scale duration in place (leaf only)."""
-        self.durationSec *= float(factor)
-        self.endTimeSec   = self.startTimeSec + self.durationSec
+        """Scale duration by *factor*; children's starts and durations scale with it."""
+        factor = float(factor)
+        for c in self.children:
+            c.startTimeSec *= factor
+            c.stretchTime(factor)
+        self.setDuration(self.durationSec * factor)
 
     # ------------------------------------------------------------------
     # Overlap helpers
     # ------------------------------------------------------------------
 
     def overlaps(self, other: Self) -> bool:
-        return not (
-            self.endTimeSec    <= other.startTimeSec
-            or other.endTimeSec <= self.startTimeSec
-        )
+        return self.startTimeSec < other.endTimeSec and other.startTimeSec < self.endTimeSec
 
     def resolveChildOverlaps(self, minDurationSec: float = 0.0) -> None:
-        """Trim overlapping adjacent children so none overlap."""
-        if len(self.children) < 2:
-            return
+        """
+        Trim overlapping adjacent children so none overlap. A child that
+        would end up shorter than *minDurationSec* is cut to that length
+        instead and the next child is pushed later (or dropped if too short).
+        """
         self.sortChildren()
         minDur = float(minDurationSec)
         i = 0
         while i < len(self.children) - 1:
-            a = self.children[i]
-            b = self.children[i + 1]
-            if a.endTimeSec <= b.startTimeSec:
-                i += 1
-                continue
-            idealDur = b.startTimeSec - a.startTimeSec
-            if idealDur >= minDur:
-                a.durationSec = idealDur
-                a.endTimeSec  = a.startTimeSec + idealDur
-                i += 1
-                continue
-            a.durationSec  = max(a.durationSec, minDur)
-            a.endTimeSec   = a.startTimeSec + a.durationSec
-            push            = minDur - idealDur
-            b.startTimeSec += push
-            b.durationSec  -= push
-            b.endTimeSec    = b.startTimeSec + b.durationSec
-            if b.durationSec <= 0.0 or b.durationSec < minDur:
-                self.children.pop(i + 1)
-                continue
+            a, b = self.children[i], self.children[i + 1]
+            if a.endTimeSec > b.startTimeSec:
+                a.setDuration(max(b.startTimeSec - a.startTimeSec, minDur))
+                if a.endTimeSec > b.startTimeSec:            # b must make room
+                    cut = a.endTimeSec - b.startTimeSec
+                    b.startTimeSec = a.endTimeSec
+                    b.setDuration(b.durationSec - cut)
+                    if b.durationSec <= 0.0 or b.durationSec < minDur:
+                        self.children.pop(i + 1)
+                        continue
             i += 1
         self._refresh()
 
@@ -195,44 +175,30 @@ class TemporalObject:
     # Quantisation
     # ------------------------------------------------------------------
 
-    def quantiseTime(self, grid: Grid) -> None:
-        """Snap start/end times of all leaves to *grid*."""
-        if self.isContainer():
+    def quantiseTime(self, grid: Grid, parentalStartSec: float = 0.0) -> None:
+        """Snap the absolute start/end times of all leaves to *grid*."""
+        if self.children:
             for child in self.children:
-                child.quantiseTime(grid)
-            if self.children:
-                self.startTimeSec = min(c.startTimeSec for c in self.children)
-                self.endTimeSec   = max(c.endTimeSec   for c in self.children)
-                self.durationSec  = self.endTimeSec - self.startTimeSec
+                child.quantiseTime(grid, parentalStartSec + self.startTimeSec)
+            self._refresh()
             return
-        self.startTimeSec = float(grid.quantise(self.startTimeSec))
-        self.endTimeSec   = float(grid.quantise(self.endTimeSec))
-        if self.endTimeSec < self.startTimeSec:
-            self.endTimeSec = self.startTimeSec
-        self.durationSec = self.endTimeSec - self.startTimeSec
+        start = float(grid.quantise(parentalStartSec + self.startTimeSec))
+        end   = float(grid.quantise(parentalStartSec + self.endTimeSec))
+        self.startTimeSec = start - parentalStartSec
+        self.setDuration(max(end, start) - start)
 
     # ------------------------------------------------------------------
     # Flattening  (non-mutating)
     # ------------------------------------------------------------------
 
     def flatten(self, parentalStartSec: float = 0.0) -> list[Self]:
-        """
-        Return absolute-time *copies* of all leaf descendants.
-
-        Neither self nor any child is mutated.
-        """
-        if not self.isContainer():
-            leaf              = self.clone()
-            leaf.startTimeSec += parentalStartSec
-            leaf.endTimeSec   += parentalStartSec
+        """Return absolute-time *copies* of all leaf descendants. Nothing is mutated."""
+        if not self.children:
+            leaf = self.clone()
+            leaf.shiftTime(parentalStartSec)
             return [leaf]
-
-        leaves: list[Self] = []
         absStart = self.startTimeSec + parentalStartSec
-        for child in self.children:
-            childCopy = child.clone()
-            leaves.extend(childCopy.flatten(absStart))
-        return leaves
+        return [leaf for child in self.children for leaf in child.flatten(absStart)]
 
     # ------------------------------------------------------------------
     # Export hook
@@ -255,24 +221,14 @@ class TemporalObject:
     # ------------------------------------------------------------------
 
     def __repr__(self) -> str:
-        dataPreview = {k: v for k, v in list(self.data.items())[:3]}
-        if len(self.data) > 3:
-            dataPreview["..."] = f"({len(self.data)} keys total)"
-
-        if self.isContainer():
-            return (
-                f"{self.__class__.__name__}("
-                f"id={self.id}, "
-                f"start={self.startTimeSec:.3f}, "
-                f"dur={self.durationSec:.3f}, "
-                f"end={self.endTimeSec:.3f}, "
-                f"children={len(self.children)})"
-            )
+        if self.children:
+            tail = f"children={len(self.children)}"
+        else:
+            preview = dict(list(self.data.items())[:3])
+            if len(self.data) > 3:
+                preview["..."] = f"({len(self.data)} keys total)"
+            tail = f"data={preview}"
         return (
-            f"{self.__class__.__name__}("
-            f"id={self.id}, "
-            f"start={self.startTimeSec:.3f}, "
-            f"dur={self.durationSec:.3f}, "
-            f"end={self.endTimeSec:.3f}, "
-            f"data={dataPreview})"
+            f"{self.__class__.__name__}(id={self.id}, start={self.startTimeSec:.3f}, "
+            f"dur={self.durationSec:.3f}, end={self.endTimeSec:.3f}, {tail})"
         )
