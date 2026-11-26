@@ -17,6 +17,12 @@ const asState = x => (Array.isArray(x) ? [...x] : [x]);
 const keyOf = state => JSON.stringify(asState(state));
 
 class MarkovRule {
+    // instanceof by brand: Max loads a fresh copy of a module on every require(), so the same
+    // class can exist twice; Symbol.for() names are shared, class objects are not.
+    static [Symbol.hasInstance](x) {
+        return Function.prototype[Symbol.hasInstance].call(this, x) ||
+               (x != null && x[Symbol.for("GreasyPidgin." + this.name)] === true);
+    }
     /** element: current state (a single symbol is wrapped); weights are normalised. */
     constructor(element, nextElements, weights) {
         this.element = asState(element);
@@ -156,5 +162,7 @@ class MarkovChain {
 
     toString() { return `MarkovChain(seed=${JSON.stringify(this.seed)}, order=${this.order}, n=${this.n}, rules=${this.rules.size})`; }
 }
+
+for (const C of [MarkovRule]) C.prototype[Symbol.for("GreasyPidgin." + C.name)] = true;
 
 if (typeof exports !== "undefined") Object.assign(exports, { MarkovRule, MarkovRules, MarkovChain });

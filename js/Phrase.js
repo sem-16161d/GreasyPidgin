@@ -98,4 +98,6 @@ class Phrase extends TemporalObject {
     }
 }
 
+for (const C of [Phrase]) C.prototype[Symbol.for("GreasyPidgin." + C.name)] = true;
+
 if (typeof exports !== "undefined") exports.Phrase = Phrase;

@@ -24,6 +24,12 @@ const DECIMALS = 10;
 const round = (x, decimals) => Number(x.toFixed(decimals));
 
 class Grid extends Set {
+    // instanceof by brand: Max loads a fresh copy of a module on every require(), so the same
+    // class can exist twice; Symbol.for() names are shared, class objects are not.
+    static [Symbol.hasInstance](x) {
+        return Function.prototype[Symbol.hasInstance].call(this, x) ||
+               (x != null && x[Symbol.for("GreasyPidgin." + this.name)] === true);
+    }
 
     constructor(values = null) {
         super(values || []);
@@ -182,5 +188,7 @@ class Grid extends Set {
         return `${name}(size=${srt.length}, range=(${srt[0]}, ${srt[srt.length - 1]}), preview=[${srt.join(", ")}])`;
     }
 }
+
+for (const C of [Grid]) C.prototype[Symbol.for("GreasyPidgin." + C.name)] = true;
 
 if (typeof exports !== "undefined") exports.Grid = Grid;

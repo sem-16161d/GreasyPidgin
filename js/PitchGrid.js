@@ -279,4 +279,6 @@ class PitchGrid extends Grid {
     }
 }
 
+for (const C of [PitchGrid]) C.prototype[Symbol.for("GreasyPidgin." + C.name)] = true;
+
 if (typeof exports !== "undefined") exports.PitchGrid = PitchGrid;

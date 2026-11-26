@@ -91,6 +91,12 @@ function bernoulliPick(candidates, expectedEvents, weights, leaning, maxRetries 
 
 /** A duration that takes up time but has no onset. */
 class Rest {
+    // instanceof by brand: Max loads a fresh copy of a module on every require(), so the same
+    // class can exist twice; Symbol.for() names are shared, class objects are not.
+    static [Symbol.hasInstance](x) {
+        return Function.prototype[Symbol.hasInstance].call(this, x) ||
+               (x != null && x[Symbol.for("GreasyPidgin." + this.name)] === true);
+    }
     constructor(value) { this.value = Number(value); }
     valueOf() { return this.value; }
     toString() { return `R(${this.value})`; }
@@ -111,6 +117,12 @@ function flattenRQQ(r) {
  *   new RQQ(4, [1, new RQQ(1, [1,1,1]), 1, 1])   triplets in beat 2
  */
 class RQQ {
+    // instanceof by brand: Max loads a fresh copy of a module on every require(), so the same
+    // class can exist twice; Symbol.for() names are shared, class objects are not.
+    static [Symbol.hasInstance](x) {
+        return Function.prototype[Symbol.hasInstance].call(this, x) ||
+               (x != null && x[Symbol.for("GreasyPidgin." + this.name)] === true);
+    }
     constructor(durationBeats, ratios, { bpm = 60, startOffsetBeats = 0 } = {}) {
         this.durationBeats = Number(durationBeats);
         this.ratios = flattenRQQ(ratios);
@@ -345,5 +357,7 @@ class TimeGrid extends Grid {
                `layers=${JSON.stringify(Object.keys(this.layers))}, sorted=${JSON.stringify(this.sorted())})`;
     }
 }
+
+for (const C of [TimeGrid, Rest, RQQ]) C.prototype[Symbol.for("GreasyPidgin." + C.name)] = true;
 
 if (typeof exports !== "undefined") Object.assign(exports, { TimeGrid, RQQ, Rest, R, beatToSec, secToBeat, bjorklund });

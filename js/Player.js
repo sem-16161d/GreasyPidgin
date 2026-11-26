@@ -21,6 +21,12 @@ const { STANDARD_INSTRUMENTS } = load("Instruments");
 const { TemporalObject } = load("TemporalObject");
 
 class Player {
+    // instanceof by brand: Max loads a fresh copy of a module on every require(), so the same
+    // class can exist twice; Symbol.for() names are shared, class objects are not.
+    static [Symbol.hasInstance](x) {
+        return Function.prototype[Symbol.hasInstance].call(this, x) ||
+               (x != null && x[Symbol.for("GreasyPidgin." + this.name)] === true);
+    }
     constructor(instruments = [], name = "", { instrumentPalette = STANDARD_INSTRUMENTS } = {}) {
         this.instrumentPalette = instrumentPalette;
         this.instruments = (typeof instruments === "string" ? [instruments] : instruments).map(key => {
@@ -33,5 +39,7 @@ class Player {
 
     toString() { return `Player(name='${this.name}', instruments=${JSON.stringify(this.instruments.map(i => i.name))})`; }
 }
+
+for (const C of [Player]) C.prototype[Symbol.for("GreasyPidgin." + C.name)] = true;
 
 if (typeof exports !== "undefined") exports.Player = Player;

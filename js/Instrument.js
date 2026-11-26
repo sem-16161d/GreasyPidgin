@@ -16,6 +16,12 @@ missing notes (written), microtones, clefs and dynamic range.
 const roundHalfEven = x => { const r = Math.round(x); return Math.abs(x % 1) === 0.5 && r % 2 ? r - 1 : r; };
 
 class Instrument {
+    // instanceof by brand: Max loads a fresh copy of a module on every require(), so the same
+    // class can exist twice; Symbol.for() names are shared, class objects are not.
+    static [Symbol.hasInstance](x) {
+        return Function.prototype[Symbol.hasInstance].call(this, x) ||
+               (x != null && x[Symbol.for("GreasyPidgin." + this.name)] === true);
+    }
     constructor({
         name = "dummy", rangeMidi = [0, 127], numSystems = 1, initClefs = null, possibleClefs = null,
         chordsPossible = true, microTones = true, writtenDynamicRange = ["ppppp", "fffff"],
@@ -83,5 +89,7 @@ class Instrument {
                `missing(written)=${JSON.stringify([...this.missing_notes_written])}, midi_program=${this.midi_program})`;
     }
 }
+
+for (const C of [Instrument]) C.prototype[Symbol.for("GreasyPidgin." + C.name)] = true;
 
 if (typeof exports !== "undefined") exports.Instrument = Instrument;

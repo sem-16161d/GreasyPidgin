@@ -67,4 +67,6 @@ class GreasyPidgin extends TemporalObject {
     }
 }
 
+for (const C of [GreasyPidgin]) C.prototype[Symbol.for("GreasyPidgin." + C.name)] = true;
+
 if (typeof exports !== "undefined") exports.GreasyPidgin = GreasyPidgin;

@@ -60,6 +60,12 @@ function deepCopy(value, memo = new Map()) {
 }
 
 class TemporalObject {
+    // instanceof by brand: Max loads a fresh copy of a module on every require(), so the same
+    // class can exist twice; Symbol.for() names are shared, class objects are not.
+    static [Symbol.hasInstance](x) {
+        return Function.prototype[Symbol.hasInstance].call(this, x) ||
+               (x != null && x[Symbol.for("GreasyPidgin." + this.name)] === true);
+    }
 
     static _allocateId() {
         // one counter on the base class, shared by every subclass
@@ -265,5 +271,7 @@ class TemporalObject {
 }
 
 TemporalObject._nextId = 0;
+
+for (const C of [TemporalObject]) C.prototype[Symbol.for("GreasyPidgin." + C.name)] = true;
 
 if (typeof exports !== "undefined") exports.TemporalObject = TemporalObject;

@@ -391,4 +391,6 @@ class Phonon extends TemporalObject {
     }
 }
 
+for (const C of [Phonon]) C.prototype[Symbol.for("GreasyPidgin." + C.name)] = true;
+
 if (typeof exports !== "undefined") Object.assign(exports, { Phonon, noteEvents, velocityOf });

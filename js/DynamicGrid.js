@@ -47,4 +47,6 @@ class DynamicGrid extends Grid {
     }
 }
 
+for (const C of [DynamicGrid]) C.prototype[Symbol.for("GreasyPidgin." + C.name)] = true;
+
 if (typeof exports !== "undefined") exports.DynamicGrid = DynamicGrid;

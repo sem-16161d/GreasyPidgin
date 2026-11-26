@@ -21,6 +21,12 @@ const flatten = x => (Array.isArray(x) ? x.flatMap(flatten) : [x]);
 const show = s => (typeof s === "string" ? `'${s}'` : typeof s === "object" ? (s.constructor?.name ?? "object") : String(s));
 
 class ProductionRule {
+    // instanceof by brand: Max loads a fresh copy of a module on every require(), so the same
+    // class can exist twice; Symbol.for() names are shared, class objects are not.
+    static [Symbol.hasInstance](x) {
+        return Function.prototype[Symbol.hasInstance].call(this, x) ||
+               (x != null && x[Symbol.for("GreasyPidgin." + this.name)] === true);
+    }
     /** predecessor -> successor (a single value is wrapped in an array). */
     constructor(predecessor, successor) {
         this.predecessor = predecessor;
@@ -31,6 +37,12 @@ class ProductionRule {
 }
 
 class ProductionRules {
+    // instanceof by brand: Max loads a fresh copy of a module on every require(), so the same
+    // class can exist twice; Symbol.for() names are shared, class objects are not.
+    static [Symbol.hasInstance](x) {
+        return Function.prototype[Symbol.hasInstance].call(this, x) ||
+               (x != null && x[Symbol.for("GreasyPidgin." + this.name)] === true);
+    }
     /** Duplicate predecessors are rejected; symbols that only appear in successors
         become constants with identity rules. */
     constructor(productionRules = []) {
@@ -149,6 +161,12 @@ class LSystem {
  * e.g. new Turtle({ draw: ["F", "A", "B"] }).
  */
 class Turtle {
+    // instanceof by brand: Max loads a fresh copy of a module on every require(), so the same
+    // class can exist twice; Symbol.for() names are shared, class objects are not.
+    static [Symbol.hasInstance](x) {
+        return Function.prototype[Symbol.hasInstance].call(this, x) ||
+               (x != null && x[Symbol.for("GreasyPidgin." + this.name)] === true);
+    }
     constructor({
         angle = 90, stepLength = 1, lengthScale = 1, startPosition = [0, 0], startHeading = 90,
         draw = ["F"], move = ["f"], left = ["+"], right = ["-"], turnAround = ["|"],
@@ -215,5 +233,7 @@ class Turtle {
         return parts.join("\n");
     }
 }
+
+for (const C of [ProductionRule, ProductionRules, Turtle]) C.prototype[Symbol.for("GreasyPidgin." + C.name)] = true;
 
 if (typeof exports !== "undefined") Object.assign(exports, { ProductionRule, ProductionRules, LSystem, Turtle });

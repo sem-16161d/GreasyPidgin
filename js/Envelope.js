@@ -117,6 +117,12 @@ const polyval = (coeffs, x) => coeffs.reduce((acc, c) => acc * x + c, 0);
 // ---------------------------------------------------------------------------
 
 class Envelope {
+    // instanceof by brand: Max loads a fresh copy of a module on every require(), so the same
+    // class can exist twice; Symbol.for() names are shared, class objects are not.
+    static [Symbol.hasInstance](x) {
+        return Function.prototype[Symbol.hasInstance].call(this, x) ||
+               (x != null && x[Symbol.for("GreasyPidgin." + this.name)] === true);
+    }
 
     constructor(data = null, {
         autosort = true, polyFit = false, curves = null, minEnv = null, maxEnv = null,
@@ -796,5 +802,7 @@ Envelope._CURVE_ALIASES = {
 };
 Envelope._EXP_STRENGTH = 5;      // curvature used by 'exp' / 'log'
 Envelope._MAX_CURVATURE = 100;
+
+for (const C of [Envelope]) C.prototype[Symbol.for("GreasyPidgin." + C.name)] = true;
 
 if (typeof exports !== "undefined") exports.Envelope = Envelope;
