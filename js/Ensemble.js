@@ -12,7 +12,13 @@ number: "flute", "flute_2", ...; `players` keeps the names in order.
     e.getPlayer("flute_2");
 */
 
-const load = name => { try { return require("./" + name); } catch (e) { return require(name); } };
+// Max finds modules by name on its search path and returns an empty object (no error) when it
+// can't; Node throws for a bare name and needs "./". Try the bare name first, then "./".
+const load = name => {
+    let m = null;
+    try { m = require(name); } catch (e) { /* Node: not a package */ }
+    return m && Object.keys(m).length ? m : require("./" + name);
+};
 const { STANDARD_INSTRUMENTS } = load("Instruments");
 const { Player } = load("Player");
 

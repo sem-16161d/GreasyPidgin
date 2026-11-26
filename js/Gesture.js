@@ -19,7 +19,13 @@ Differences from the Python version
 - No fromMidiFile() and no file exporters; toEvents() gives the playable notes.
 */
 
-const load = name => { try { return require("./" + name); } catch (e) { return require(name); } };
+// Max finds modules by name on its search path and returns an empty object (no error) when it
+// can't; Node throws for a bare name and needs "./". Try the bare name first, then "./".
+const load = name => {
+    let m = null;
+    try { m = require(name); } catch (e) { /* Node: not a package */ }
+    return m && Object.keys(m).length ? m : require("./" + name);
+};
 const { TemporalObject } = load("TemporalObject");
 const { Envelope } = load("Envelope");
 const { Phonon, noteEvents } = load("Phonon");

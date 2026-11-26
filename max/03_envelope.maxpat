@@ -25,7 +25,7 @@
    60,
    60,
    1000,
-   966
+   1022
   ],
   "boxes": [
    {
@@ -277,9 +277,9 @@
       20,
       188,
       600,
-      548
+      604
      ],
-     "code": "inlets = 1;\noutlets = 1;\n\nconst { Envelope } = require(\"Envelope\");\n\nlet env = new Envelope([0, 1, 0.3, 0.8, 0]);\n\n// read the envelope at 32 evenly spaced points and send them as one list\nfunction bang() {\n    const values = [];\n    for (let i = 0; i < 32; i++) {\n        const x = i / 31;                        // 0 .. 1\n        values.push(env.getValue(x, true, true)); // x and y both 0..1\n    }\n    outlet(0, values);\n}\n\nfunction points(...values) {\n    env = new Envelope(values);\n    bang();\n}\n\n// one curve name per segment: 3 points = 2 segments = 2 names\nfunction curves(...names) {\n    env = env.withCurves(names);\n    bang();\n}\n\nfunction periodic(periods, shape) {\n    env = Envelope.periodic(periods, 16, { shape: shape });\n    bang();\n}\n\nfunction jitter(amount) {\n    env = env.withJitter(amount);\n    bang();\n}\n",
+     "code": "inlets = 1;\noutlets = 1;\n\nconst { Envelope } = require(\"Envelope\");\n\nlet env = new Envelope([0, 1, 0.3, 0.8, 0]);\n\n// read the envelope at 32 evenly spaced points and send them as one list\nfunction bang() {\n    const values = [];\n    for (let i = 0; i < 32; i++) {\n        const x = i / 31;                        // 0 .. 1\n        values.push(env.getValue(x, true, true)); // x and y both 0..1\n    }\n    outlet(0, values);\n}\n\nfunction points(...values) {\n    env = new Envelope(values);\n    bang();\n}\n\n// one curve per segment (points - 1); the names repeat if there are fewer\nfunction curves(...names) {\n    const list = [];\n    for (let i = 0; i < env.points.length - 1; i++) {\n        list.push(names[i % names.length]);\n    }\n    env = env.withCurves(list);\n    bang();\n}\n\nfunction periodic(periods, shape) {\n    env = Envelope.periodic(periods, 16, { shape: shape });\n    bang();\n}\n\nfunction jitter(amount) {\n    env = env.withJitter(amount);\n    bang();\n}\n",
      "filename": "none",
      "text": "",
      "numinlets": 1,
@@ -297,7 +297,7 @@
      "maxclass": "multislider",
      "patching_rect": [
       20,
-      761,
+      817,
       400,
       140
      ],
@@ -321,7 +321,7 @@
      "maxclass": "comment",
      "patching_rect": [
       430,
-      761,
+      817,
       200,
       22.0
      ],
