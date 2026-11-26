@@ -1,285 +1,146 @@
 import random
+from numbers import Real
+
+# float noise (0.1 + 0.2 = 0.30000000000000004) is rounded away at this precision
+_DECIMALS = 10
+
 
 class Grid(set):
-    """A grid is just a specialized set with optional helper methods."""
-    
+    """A grid is just a specialized set with optional helper methods.
+
+    Note: set operations (|, &, -, copy()) return a plain set, not a Grid.
+    """
+
     def __init__(self, values=None):
-        # values can be None, iterable, or another set
-        super().__init__(values if values is not None else [])
+        super().__init__(() if values is None else values)
         self.latestSieveID = -1
-        self.sieved = dict()
+        self.sieved = {}
         self.sampled = {}
         self.sampleID = -1
-    
+
     def sorted(self):
         """Return grid values in sorted order."""
         return sorted(self)
-    
-    def check_types(self, expected_type=None):
-        """
-        If expected_type is given:
-            → returns True if all elements are instances of expected_type.
-
-        If expected_type is None:
-            → returns True if all elements share the same type.
-        """
-        if not self:
-            return True  # empty grid satisfies the condition
-
-        # Case 1: explicit expected_type
-        if expected_type is not None:
-            return all(isinstance(x, expected_type) for x in self)
-
-        # Case 2: no type given → check homogeneity
-        it = iter(self)
-        first_type = type(next(it))
-        return all(isinstance(x, first_type) for x in it)
-    
-
 
     def quantise(self, value):
-        
-        if isinstance(value, (float, int)):
-            quantised = min(self, key=lambda x: abs(x - value))
-        elif isinstance(value, list):
-            quantised = [self.quantise(v) for v in value]
-        elif isinstance(value, tuple):
-            quantised = tuple([self.quantise(v) for v in value])
-        elif isinstance(value, set):
-            quantised = set([self.quantise(v) for v in value])
-        else:
-            raise ValueError(f"Grid.quantise: Value {value} of type {type(value)} cannot be quantised!")
+        """Snap a number (or each number in a list/tuple/set) to the nearest grid value.
+        On a tie the lower grid value wins."""
+        if isinstance(value, Real):
+            return min(self, key=lambda x: (abs(x - value), x))
+        if isinstance(value, (list, tuple, set)):
+            return type(value)(self.quantise(v) for v in value)
+        raise ValueError(f"Grid.quantise: Value {value} of type {type(value)} cannot be quantised!")
 
-        # compute minimum by distance
-        return quantised
-    
-    def rotateList(self,lst, rotation):
-        return lst[rotation:] + lst[:rotation]
+    def sieve(self, stepSize=1, offsetIndex=0, *, discardOffset=True,
+              inverse=False, reverse=False, rotation=0):
+        """Keep every stepSize-th value from offsetIndex on (Xenakis sieve).
 
+        discardOffset : drop the values before offsetIndex (default) or keep them
+        inverse       : keep the values the sieve would drop instead
+        reverse       : sieve from the highest value downwards
+        rotation      : shift the sieve's phase by this many positions
 
-    def sieve(
-        self, 
-        stepSize = 1, 
-        offsetIndex = 0, 
-        *,
-        discardOffset = True, 
-        inverse = False, 
-        reverse = False,
-        rotation = 0):
-        list = self.sorted()
-        boolIterator = []
-        if reverse:
-            list = list[::-1]
-        for i in range(stepSize):
-            newBool = False
-            if i == 0:
-                newBool = True
-            if inverse:
-                newBool = not newBool
-            boolIterator.append(newBool)
-        out = list[:offsetIndex]
-        if discardOffset:
-            out = []
-        iterList = self.rotateList(list[offsetIndex:], rotation)
-        for i,elem in enumerate(iterList):
-            if len(boolIterator) == 0:
-                return []
-            if boolIterator[i%len(boolIterator)]:
-                out.append(elem)
-        
+        The result is stored in self.sieved['sieved_<n>'] and also returned.
+        """
+        if stepSize < 1:
+            raise ValueError(f"Grid.sieve: stepSize must be >= 1, got {stepSize}")
+        values = sorted(self, reverse=reverse)
+        head = [] if discardOffset else values[:offsetIndex]
+        tail = values[offsetIndex:]
+        if tail:
+            r = rotation % len(tail)
+            tail = tail[r:] + tail[:r]
+        kept = [v for i, v in enumerate(tail) if (i % stepSize == 0) != inverse]
 
-        
-        # out = self.rotateList(out,rotation)
         self.latestSieveID += 1
-        self.sieved["sieved_"+ str(self.latestSieveID)] = {
-            'sievedGrid': Grid(out),
+        self.sieved[f"sieved_{self.latestSieveID}"] = {
+            'sievedGrid': Grid(head + kept),
             'stepSize': stepSize,
             'offsetIndex': offsetIndex,
             'discardOffset': discardOffset,
-            'inverse':inverse,
+            'inverse': inverse,
             'reverse': reverse,
-            'rotation': rotation
+            'rotation': rotation,
         }
-        
+        return self.sieved[f"sieved_{self.latestSieveID}"]['sievedGrid']
+
     def sample(self, numElements):
-        sampled = random.sample(self.sorted(), numElements)
+        """Pick numElements random values; stored in self.sampled['sampled_<n>'] and returned."""
         self.sampleID += 1
-        self.sampled['sampled_'+str(self.sampleID)] = sampled
-    
-####################################################################################################
-# helper functions
-# get decimal places on an integer
+        self.sampled[f"sampled_{self.sampleID}"] = random.sample(self.sorted(), numElements)
+        return self.sampled[f"sampled_{self.sampleID}"]
+
+    # ------------------------------------------------------------------
+    # Constructors (after SuperCollider's Array methods)
+    # ------------------------------------------------------------------
+
     @staticmethod
-    def _decimal_places(x):
-        """
-        Return number of decimal places in a number
-        based on its string representation.
-        """
-        s = format(x, "f")  # avoids scientific notation
-        if "." in s:
-            return len(s.rstrip("0").split(".")[1])
-        return 0
-####################################################################################################
-# fill  — like Array.fill (superCollider)
+    def _checkSize(size, minimum=0):
+        if size < minimum:
+            raise ValueError(f"size must be >= {minimum}")
 
     @classmethod
     def fill(cls, size: int, func_or_value):
-        """
-        Create a Grid with `size` elements.
-
-        If func_or_value is callable, it is called as func_or_value(i)
-        for i in [0 .. size-1]. Otherwise the same value is repeated.
-        """
-        if size < 0:
-            raise ValueError("size must be >= 0")
-
-        if callable(func_or_value):
-            data = (func_or_value(i) for i in range(size))
-        else:
-            data = (func_or_value for _ in range(size))
-
-        return cls(data)
-
-####################################################################################################
-# series  — arithmetic progression  (superCollider)
+        """`size` values: func_or_value(i) if callable, else the value repeated
+        (a set, so a repeated value gives a Grid of length 1)."""
+        cls._checkSize(size)
+        f = func_or_value if callable(func_or_value) else (lambda _: func_or_value)
+        return cls(f(i) for i in range(size))
 
     @classmethod
     def series(cls, start, step, size: int):
-        if size < 0:
-            raise ValueError("size must be >= 0")
-
-        # detect required precision
-        decimals = max(
-            cls._decimal_places(start),
-            cls._decimal_places(step),
-        )
-
-        data = (
-            round(start + i * step, decimals)
-            for i in range(size)
-        )
-
-        return cls(data)
-
-####################################################################################################
-# geom  — geometric progression  (superCollider)
-    @classmethod
-    def geom(cls, start, ratio, size: int, *, decimals = 100):
-        """
-        Geometric series: start * ratio^i for `length` elements.
-
-        Note: if ratio == 1, it's just a constant series.
-        """
-        if size < 0:
-            raise ValueError("size must be >= 0")
-
-        data = (start * (ratio ** i) for i in range(size))
-        if decimals < 100:
-            data = (round(start * (ratio ** i), decimals) for i in range(size))
-        return cls(data)
-
-####################################################################################################
-# interpolation  — linear interpolation between endpoints (superCollider)
+        """Arithmetic series: start, start + step, ... (`size` values)."""
+        cls._checkSize(size)
+        return cls(round(start + i * step, _DECIMALS) for i in range(size))
 
     @classmethod
-    def linearInterpolation(cls, start, end, size: int, *,decimals = 100, includeEnd = True):
-        """
-        `length` points linearly spaced between `start` and `end`.
+    def geom(cls, start, ratio, size: int, *, decimals=None):
+        """Geometric series: start * ratio**i (`size` values), optionally rounded."""
+        cls._checkSize(size)
+        values = (start * ratio ** i for i in range(size))
+        return cls(values if decimals is None else (round(v, decimals) for v in values))
 
-        If length == 1, returns {start}.
-        """
-        if size <= 0:
-            raise ValueError("length must be > 0")
-        if size == 1:
-            return cls([start])
-        if includeEnd:
-            step = (end - start) / (size - 1)
-        else:
-            step= (end - start) / (size)
-        data = (start + i * step for i in range(size))
-        if decimals < 100:
-            data = (round(start + i * step, decimals) for i in range(size))
-        return cls(data)
-
-####################################################################################################
-# rand  — random values
+    @classmethod
+    def linearInterpolation(cls, start, end, size: int, *, decimals=None, includeEnd=True):
+        """`size` points evenly spaced from start to end (end excluded if includeEnd=False)."""
+        cls._checkSize(size, 1)
+        steps = max(size - 1, 1) if includeEnd else size
+        decimals = _DECIMALS if decimals is None else decimals
+        return cls(round(start + (end - start) * i / steps, decimals) for i in range(size))
 
     @classmethod
     def rand(cls, size: int, low=0.0, high=1.0, *, integer: bool = False):
-        """
-        `size` random values in [low, high].
-
-        If integer=True, uses randint and returns ints.
-        Otherwise uses uniform and returns floats.
-        """
-        if size < 0:
-            raise ValueError("size must be >= 0")
-
+        """`size` random values in [low, high]; distinct ints if integer=True."""
+        cls._checkSize(size)
         if integer:
-            rangeHiLow = int(int(high)-int(low))
-            data = random.sample([ i+low for i in range(rangeHiLow)], size)
-        else:
-            data = (random.uniform(float(low), float(high)) for _ in range(size))
-
-        return cls(data)
-
-####################################################################################################
-# fib  — Fibonacci-like sequence
+            return cls(random.sample(range(int(low), int(high) + 1), size))
+        return cls(random.uniform(float(low), float(high)) for _ in range(size))
 
     @classmethod
     def fib(cls, size: int, a=0, b=1):
-        """
-        Fibonacci-style sequence of `length` elements.
-        Start values are a, b.
-        """
-        if size < 0:
-            raise ValueError("length must be >= 0")
-        if size == 0:
-            return cls()
-        if size == 1:
-            return cls([a])
-
-        values = [a, b]
-        for _ in range(size - 2):
+        """Fibonacci-style sequence of `size` values starting a, b (duplicates collapse)."""
+        cls._checkSize(size)
+        values = [a, b][:size]
+        while len(values) < size:
             values.append(values[-1] + values[-2])
-
         return cls(values)
 
-    def differentiate(self, copyFirst = False) -> list:
+    def differentiate(self, copyFirst=False) -> list:
         """
-        Return the deltas between consecutive sorted elements.
-        by default it assume the first elem to be 0 (delta of first element with itself)
-        to use the original SuperCollider-differentiate behaviours, set copyFirst = True
+        Deltas between consecutive sorted values. The first entry is 0, or the
+        first value itself with copyFirst=True (SuperCollider's differentiate).
 
-        Example
-        -------
         >>> Grid([3, 7, 10, 15]).differentiate()
         [0, 4, 3, 5]
         """
-        srt    = self.sorted()
-        if copyFirst:
-            result = [srt[0]]
-        else:
-            result = [0]
-        for i in range(1, len(srt)):
-            result.append(srt[i] - srt[i - 1])
-        return result
+        srt = self.sorted()
+        if not srt:
+            return []
+        return [srt[0] if copyFirst else 0] + [b - a for a, b in zip(srt, srt[1:])]
 
     def __repr__(self):
-        size = len(self)
-        if size == 0:
-            return f"{self.__class__.__name__}(size=0)"
-
-        try:
-            vmin = min(self)
-            vmax = max(self)
-        except Exception:
-            vmin = "?"
-            vmax = "?"
-
-        return (
-            f"{self.__class__.__name__}("
-            f"size={size}, "
-            f"range=({vmin}, {vmax}), "
-            f"preview={sorted(self)})"
-        )
+        name = self.__class__.__name__
+        if not self:
+            return f"{name}(size=0)"
+        srt = self.sorted()
+        return f"{name}(size={len(srt)}, range=({srt[0]}, {srt[-1]}), preview={srt})"
