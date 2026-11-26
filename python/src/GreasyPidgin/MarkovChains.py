@@ -33,6 +33,7 @@ Usage
     seq = chain.getNElements(seed=(0,1), n=10)
 """
 
+from collections import Counter
 from random import choices
 
 
@@ -278,7 +279,8 @@ class MarkovChain:
         Returns
         -------
         The next symbol, or None if no rule exists for this state
-        (with a warning).
+        (with a warning). None can also be a real symbol (a rest), so
+        check `state in chain.rules` when that matters.
         """
         key = _toTuple(element)
         if key not in self.rules:
@@ -324,15 +326,14 @@ class MarkovChain:
         out = list(_toTuple(seed))
 
         for _ in range(n):
-            state   = _toTuple(out[-order:])
-            nextSym = self.nextElement(state)
-            if nextSym is None:
+            state = _toTuple(out[-order:])
+            if state not in self.rules:
                 print(
                     f"MarkovChain.getNElements: chain broken at state {state!r}, "
                     f"stopping early"
                 )
                 break
-            out.append(nextSym)
+            out.append(self.rules[state].sample())
 
         return out
 
@@ -378,19 +379,11 @@ class MarkovChain:
             nextSym = seq[i + order]
             pairs.append((state, nextSym))
 
-        # group by state
-        stateMap: dict[tuple, list] = {}
+        # count next symbols per state (first-seen order kept)
+        stateMap: dict[tuple, Counter] = {}
         for state, nextSym in pairs:
-            if state not in stateMap:
-                stateMap[state] = []
-            stateMap[state].append(nextSym)
-
-        # build MarkovRule objects
-        newRules: list[MarkovRule] = []
-        for state, nextSymbols in stateMap.items():
-            uniqueNext   = list(dict.fromkeys(nextSymbols))  # preserve order, deduplicate
-            weightCounts = [nextSymbols.count(s) for s in uniqueNext]
-            newRules.append(MarkovRule(state, uniqueNext, weightCounts))
+            stateMap.setdefault(state, Counter())[nextSym] += 1
+        newRules = [MarkovRule(state, list(c), list(c.values())) for state, c in stateMap.items()]
 
         self.rules = MarkovRules(newRules)
         self.order = order

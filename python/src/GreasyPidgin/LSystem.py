@@ -235,7 +235,7 @@ class LSystem:
             axiom = [axiom]
 
         if len(axiom) < 1:
-            raise ValueError(f"LSystem: axiom is empty")
+            raise ValueError("LSystem: axiom is empty")
 
         if not isinstance(productionRules, ProductionRules):
             raise TypeError(

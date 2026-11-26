@@ -107,9 +107,9 @@ class Instrument:
 
         low, high = self._get_range(sounding=sounding)
 
-        # missing notes handling (compare against *sounding* midi)
-        midi_rounded = int(round(midi))
-        if (not allow_missing_notes) and midi_rounded in self.missing_notes_sounding:
+        # missing notes, compared in the same domain (written / sounding) as midi
+        missing = self.missing_notes_sounding if sounding else self.missing_notes_written
+        if not allow_missing_notes and any(abs(midi - m) < 1e-6 for m in missing):
             return False, None
 
         too_low = midi < low
@@ -132,9 +132,13 @@ class Instrument:
         """
         Force a MIDI pitch into range by octave transposition.
 
-        Keeps microtonal offset if present.
+        Keeps a microtonal offset if the instrument (or allow_microtones)
+        allows microtones; otherwise the pitch is rounded to the nearest
+        semitone first, since no octave shift can fix a microtone.
         """
         midi = float(midi)
+        if not midi.is_integer() and not (self.microTones or allow_microtones):
+            midi = float(round(midi))
         in_r, direction = self.in_range(
             midi,
             sounding=sounding,

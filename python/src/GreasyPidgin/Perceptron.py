@@ -8,7 +8,12 @@ https://www.educative.io/answers/what-is-the-role-of-a-bias-in-neural-networks
 import numpy as np
 
 class Perceptron():
-    def __init__(self, learning_rate = 0.01, n_iterations = 1000, activationFunction = 'identity'):
+    ACTIVATIONS = ("identity", "binary", "tanh", "ReLu")
+
+    def __init__(self, learning_rate = 0.01, n_iterations = 1000, activationFunction = 'identity', verbose = False):
+        if activationFunction not in self.ACTIVATIONS:
+            raise ValueError(f"Perceptron: unknown activationFunction {activationFunction!r}, use one of {self.ACTIVATIONS}")
+        self.verbose = verbose
         self.learning_rate = learning_rate
         self.n_iterations = n_iterations
         self.bias = None
@@ -48,7 +53,7 @@ class Perceptron():
         
     def _update_weights(self, example_features, y_actual, y_predicted):
         error = y_actual - y_predicted
-        if self.n%10000 == 0:
+        if self.verbose and self.n % 10000 == 0:
             print(f"absolute error: {abs(error)}")
         weight_correction = self.learning_rate * error
         self.weights = self.weights + weight_correction * example_features

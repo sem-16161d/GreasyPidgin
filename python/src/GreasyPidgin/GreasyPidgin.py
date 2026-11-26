@@ -4,10 +4,9 @@ from GreasyPidgin.TimeGrid import TimeGrid
 from GreasyPidgin.DynamicGrid import DynamicGrid
 from GreasyPidgin.Ensemble import Ensemble
 
-def _ensureType(input, cls ):
-    if not isinstance(input, cls):
-        input = cls(input)
-    return input
+def _ensureType(value, cls):
+    """value as cls: instances pass, values are passed to cls(value)."""
+    return value if isinstance(value, cls) else cls(value)
 
 class GreasyPidgin(TemporalObject):
     def __init__(
@@ -26,7 +25,9 @@ class GreasyPidgin(TemporalObject):
         self.ensemble = _ensureType(Ensemble() if ensemble is None else ensemble, Ensemble)
         self.timeGrid = _ensureType(TimeGrid() if timeGrid is None else timeGrid, TimeGrid)
         self.pitchGrid = _ensureType(PitchGrid() if pitchGrid is None else pitchGrid, PitchGrid)
-        self.dynamicGrid = _ensureType(DynamicGrid() if dynamicGrid is None else dynamicGrid, DynamicGrid)
+        if dynamicGrid is not None and not isinstance(dynamicGrid, DynamicGrid):
+            raise TypeError("GreasyPidgin: dynamicGrid must be a DynamicGrid (e.g. DynamicGrid(dynamicStepdB=3))")
+        self.dynamicGrid = dynamicGrid if dynamicGrid is not None else DynamicGrid()
         super().__init__(startTimeSec, durationSec, temporalObjects)
 
     def __repr__(self):

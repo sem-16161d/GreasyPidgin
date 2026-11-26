@@ -179,7 +179,7 @@ class TemporalObject:
         """Snap the absolute start/end times of all leaves to *grid*."""
         if self.children:
             for child in self.children:
-                child.quantiseTime(grid, parentalStartSec + self.startTimeSec)
+                child.quantiseTime(grid, parentalStartSec=parentalStartSec + self.startTimeSec)
             self._refresh()
             return
         start = float(grid.quantise(parentalStartSec + self.startTimeSec))

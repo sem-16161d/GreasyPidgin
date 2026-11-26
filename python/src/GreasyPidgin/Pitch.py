@@ -98,6 +98,23 @@ def spntom(spn: str) -> float:
     # MIDI formula: 12 * (octave + 1) + semitone_index
     return 12.0 * (octave + 1) + base_semitones + offset
 
+def mtospn(midi: float) -> str:
+    """
+    MIDI float -> note name, the inverse of spntom(): 60.0 -> 'c4', 61.0 -> 'cs4',
+    60.5 -> 'cqs4'. A value between the supported microtones gets the nearest
+    one; on a tie the simpler accidental wins (natural, sharp, flat, quarter-, ...).
+    """
+    m = float(midi)
+    best = None
+    for octave in range(int(m // 12) - 2, int(m // 12) + 1):
+        for letter, base in _NOTE_OFFSETS.items():
+            for rank, (acc, off) in enumerate(_ACCIDENTAL_OFFSETS.items()):
+                err = abs(12.0 * (octave + 1) + base + off - m)
+                key = (round(err, 9), rank)
+                if best is None or key < best[0]:
+                    best = (key, f"{letter}{acc}{octave}")
+    return best[1]
+
 def spntof(spn: str, referenceA4: float = 440.0):
     return mtof(spntom(spn), referenceA4)
 

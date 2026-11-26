@@ -1,12 +1,11 @@
 # Player.py
-from GreasyPidgin.Instrument import Instrument
 from GreasyPidgin.Instruments import STANDARD_INSTRUMENTS
 from GreasyPidgin.TemporalObject import TemporalObject
 
 class Player:
     def __init__(
         self,
-        instruments = [],
+        instruments = (),
         name: str = "",
         *,
         instrumentPalette = STANDARD_INSTRUMENTS,

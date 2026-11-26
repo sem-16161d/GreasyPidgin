@@ -92,6 +92,8 @@ MIDI_PITCHWHEEL_MAX =  8191
 def _ccNumber(key: str | int) -> int:
     if isinstance(key, int):
         return key
+    if key not in MIDI_CC_NAMES:
+        raise ValueError(f"MidiExporter: unknown CC envelope name {key!r}; use a CC number or one of MIDI_CC_NAMES")
     return MIDI_CC_NAMES.index(key)
 
 
@@ -140,6 +142,25 @@ class Exporter:
 # MIDI
 # ---------------------------------------------------------------------------
 
+def _assignTracks(leaves: list) -> int:
+    """
+    Greedy interval colouring: give every leaf a midiTrackIndex so that
+    leaves on one track never overlap. Returns the number of tracks.
+    """
+    active: list[tuple[float, int]] = []   # (endTimeSec, track)
+    nTracks = 0
+    for leaf in sorted(leaves, key=lambda c: (c.startTimeSec, c.endTimeSec)):
+        free = min(((end, tr) for end, tr in active if end <= leaf.startTimeSec), default=None)
+        if free is None:
+            tr, nTracks = nTracks, nTracks + 1
+        else:
+            tr = free[1]
+            active = [(e, t) for e, t in active if t != tr]
+        leaf.midiTrackIndex = tr
+        active.append((leaf.endTimeSec, tr))
+    return nTracks
+
+
 class MidiExporter(Exporter):
     """
     Export a TemporalObject tree to a MIDI file.
@@ -157,6 +178,11 @@ class MidiExporter(Exporter):
     leaf.envelopes. The special keys 'pitchwheel' and 'glissando' in
     leaf.envelopes are ignored — pitchwheel lives in leaf.data instead.
 
+    Pitchwheel is a channel message, so when any note is bent (microtones,
+    glissandi) overlapping notes get their own channels (starting at
+    `channel`, skipping the drum channel 10) and every bend is sent just
+    before its note-on. Without bends everything stays on `channel`.
+
     Parameters
     ----------
     path : str
@@ -168,9 +194,17 @@ class MidiExporter(Exporter):
     pitchBendRange : int
         Ticks per semitone. Default 4096 → ±2 semitones fills the full
         MIDI pitchwheel range of ±8192 ticks.
+    pitchwheelResolution : int
+        Pitchwheel messages per second for glissandi.
+    ccResolution : int
+        Samples per second for CC / aftertouch envelopes (a message is
+        only written when the value changes).
     channel : int
         MIDI channel (0-indexed, so 0 = channel 1).
     """
+
+    # same tick: note-offs first, then controllers / bends, then note-ons, then text
+    _ORDER = {"note_off": 0, "control_change": 1, "pitchwheel": 1, "aftertouch": 1, "note_on": 2}
 
     def __init__(
         self,
@@ -180,7 +214,8 @@ class MidiExporter(Exporter):
         parseEnvelopes: bool = True,
         perNoteTracks: bool = False,
         pitchBendRange: int = 4096,
-        pitchwheelResolution: int = 50,  # interpolation steps per second for glissandi
+        pitchwheelResolution: int = 50,
+        ccResolution: int = 100,
         channel: int = 0,
     ) -> None:
         super().__init__(path)
@@ -189,6 +224,7 @@ class MidiExporter(Exporter):
         self.perNoteTracks        = perNoteTracks
         self.pitchBendRange       = pitchBendRange
         self.pitchwheelResolution = pitchwheelResolution
+        self.ccResolution         = ccResolution
         self.channel              = channel
 
     # ------------------------------------------------------------------
@@ -207,12 +243,17 @@ class MidiExporter(Exporter):
         bpm          = float(to.data.get("bpm") or getattr(to, "bpm", 60.0))
         ticksPerBeat = int(to.data.get("ticksPerBeat") or getattr(to, "ticksPerBeat", 480))
 
-        leaves = self._assignTracks(leaves)
-        nTracks = max(lf.midiTrackIndex for lf in leaves) + 1
+        if self.perNoteTracks:
+            nTracks = _assignTracks(leaves)
+        else:
+            nTracks = 1
+            for lf in leaves:
+                lf.midiTrackIndex = 0
+        self._assignChannels(leaves)
 
-        tracks: list[list[tuple[float, object]]] = [[] for _ in range(nTracks)]
         # times are seconds; the file has one tempo (the root's), so every
         # leaf converts seconds -> beats with that tempo
+        tracks: list[list[tuple[float, object]]] = [[] for _ in range(nTracks)]
         for leaf in leaves:
             tracks[leaf.midiTrackIndex].extend(self._leafMessages(leaf, bpm))
 
@@ -222,47 +263,48 @@ class MidiExporter(Exporter):
             name = f"{self.trackName}_t{i}" if self.perNoteTracks else self.trackName
             tr.append(MetaMessage("track_name", name=name, time=0))
             if i == 0:
-                tr.insert(1, MetaMessage("set_tempo", tempo=bpm2tempo(bpm), time=0))
-
+                tr.append(MetaMessage("set_tempo", tempo=bpm2tempo(bpm), time=0))
             lastTick = 0
-            for beats, msg in sorted(absEvents, key=lambda e: e[0]):
+            for beats, msg in sorted(absEvents, key=lambda e: (e[0], self._ORDER.get(e[1].type, 3))):
                 tick     = int(round(beats * ticksPerBeat))
                 msg.time = max(0, tick - lastTick)
                 tr.append(msg)
                 lastTick = tick
-
             midiFile.tracks.append(tr)
 
         midiFile.save(self.path)
         print(f"MidiExporter: saved -> {self.path}")
 
     # ------------------------------------------------------------------
-    # Track assignment (greedy interval colouring)
+    # Channel assignment
     # ------------------------------------------------------------------
 
-    def _assignTracks(self, leaves: list) -> list:
-        if not self.perNoteTracks:
-            for lf in leaves:
-                lf.midiTrackIndex = 0
-            return leaves
+    @staticmethod
+    def _bends(leaf) -> tuple[float, float]:
+        if "pitchwheel" in leaf.data:
+            startSem, endSem = leaf.data["pitchwheel"]
+            return float(startSem), float(endSem)
+        pitchMidi = float(leaf.data.get("pitchMidi", 0.0))
+        diff = pitchMidi - round(pitchMidi)
+        return diff, diff
 
-        active: list[tuple[float, int]] = []
-        nextTrack = 0
-        for leaf in sorted(leaves, key=lambda c: (c.startTimeSec, c.endTimeSec)):
-            free = min(
-                ((end, tr) for end, tr in active if end <= leaf.startTimeSec),
-                key=lambda x: x[0],
-                default=None,
-            )
-            if free is None:
-                tr = nextTrack
-                nextTrack += 1
-            else:
-                tr = free[1]
-                active = [(e, t) for e, t in active if t != tr]
-            leaf.midiTrackIndex = tr
-            active.append((leaf.endTimeSec, tr))
-        return leaves
+    def _assignChannels(self, leaves: list) -> None:
+        """leaf.midiChannel: `channel` for all, or, when anything is bent, a
+        separate channel per overlapping note so each keeps its own bend."""
+        if not any(abs(b) > 1e-9 for lf in leaves for b in self._bends(lf)):
+            for lf in leaves:
+                lf.midiChannel = self.channel
+            return
+        pool = [self.channel] + [c for c in range(16) if c not in (self.channel, 9)]
+        active: list[tuple[float, int]] = []   # (endTimeSec, channel)
+        for lf in sorted(leaves, key=lambda c: (c.startTimeSec, c.endTimeSec)):
+            active = [(e, c) for e, c in active if e > lf.startTimeSec]
+            busy = {c for _, c in active}
+            free = [c for c in pool if c not in busy]
+            # all channels busy: share the one that frees up first
+            ch = free[0] if free else min(active)[1]
+            lf.midiChannel = ch
+            active.append((lf.endTimeSec, ch))
 
     # ------------------------------------------------------------------
     # Per-leaf message builders
@@ -272,6 +314,7 @@ class MidiExporter(Exporter):
         startB = _secToBeats(leaf.startTimeSec, bpm)
         endB   = _secToBeats(leaf.endTimeSec,   bpm)
         out    = self._noteMessages(leaf, startB, endB, bpm)
+        out.extend(self._pitchwheelMessages(leaf, startB, endB))
         if self.parseEnvelopes:
             out.extend(self._ccMessages(leaf, bpm))
         return out
@@ -280,18 +323,8 @@ class MidiExporter(Exporter):
         from mido import Message, MetaMessage
         from .Normalisation import normaliseIntoRange
 
-        # --- anchor note ---
-        pitchMidi = float(leaf.data.get("pitchMidi", 0.0))
-        anchor    = round(pitchMidi)
-        diff      = pitchMidi - anchor   # semitone offset, e.g. 0.5 for quartertone
-
-        # --- pitchwheel semitone offsets ---
-        # If the caller has already set data["pitchwheel"] = (startSem, endSem),
-        # use that (e.g. for glissando). Otherwise derive from pitchMidi.
-        if "pitchwheel" in leaf.data:
-            startSem, endSem = leaf.data["pitchwheel"]
-        else:
-            startSem = endSem = diff
+        anchor = round(float(leaf.data.get("pitchMidi", 0.0)))
+        startSem, endSem = self._bends(leaf)
 
         # --- velocity ---
         # dB window -> velocity window. Defaults are the legacy 0..100 dB ->
@@ -304,129 +337,68 @@ class MidiExporter(Exporter):
         minVel    = float(leaf.data.get("minVelocity", 0.0))
         maxVel    = float(leaf.data.get("maxVelocity", 127.0))
         norm      = normaliseIntoRange(dynamicdB, minDb, maxDb)
-        velocity  = int(round(minVel + norm * (maxVel - minVel)))
-        velocity  = max(1, min(127, velocity))
+        velocity  = max(1, min(127, int(round(minVel + norm * (maxVel - minVel)))))
 
-        # --- microtonal annotation ---
-        # No glissando: single label at note start if microtonal.
-        # Glissando (startSem != endSem): label start and/or end independently.
-        annotationMessages: list[tuple[float, MetaMessage]] = []
-        isGliss = abs(startSem - endSem) > 1e-9
-
-        if isGliss:
-            label = _centLabel(startSem)
-            if label:
-                annotationMessages.append(
-                    (startB, MetaMessage("lyrics", text=label, time=0))
-                )
-            label = _centLabel(endSem)
-            if label:
-                annotationMessages.append(
-                    (endB, MetaMessage("lyrics", text=f"-> {label}", time=0))
-                )
-        else:
-            label = _centLabel(startSem)
-            if label:
-                annotationMessages.append(
-                    (startB, MetaMessage("lyrics", text=label, time=0))
-                )
-
-        # --- any pre-existing annotations from leaf.data or leaf.annotations ---
+        # --- microtonal annotation: cents at the start, and at the end of a glissando ---
+        texts: list[tuple[float, str]] = []
+        if (label := _centLabel(startSem)):
+            texts.append((startB, label))
+        if abs(startSem - endSem) > 1e-9 and (label := _centLabel(endSem)):
+            texts.append((endB, f"-> {label}"))
         for offsetSec, text in leaf.data.get("annotations", leaf.annotations):
-            beats = _secToBeats(leaf.startTimeSec + float(offsetSec), bpm)
-            annotationMessages.append(
-                (beats, MetaMessage("lyrics", text=str(text), time=0))
-            )
+            texts.append((_secToBeats(leaf.startTimeSec + float(offsetSec), bpm), str(text)))
 
-        ch = self.channel
+        ch = leaf.midiChannel
         return [
             (startB, Message("note_on",  channel=ch, note=anchor, velocity=velocity, time=0)),
             (endB,   Message("note_off", channel=ch, note=anchor, velocity=velocity, time=0)),
-            *annotationMessages,
+            *((b, MetaMessage("lyrics", text=t, time=0)) for b, t in texts),
         ]
 
     def _pitchwheelMessages(self, leaf, startB: float, endB: float) -> list:
+        """The note's bend at its start (sorted before the note-on); a
+        glissando ramps towards the end bend up to just before the note-off."""
         from mido import Message
 
-        if "pitchwheel" in leaf.data:
-            startSem, endSem = leaf.data["pitchwheel"]
-        else:
-            pitchMidi = float(leaf.data.get("pitchMidi", 0.0))
-            diff      = pitchMidi - round(pitchMidi)
-            startSem  = endSem = diff
+        startSem, endSem = self._bends(leaf)
+        ch = leaf.midiChannel
+        if abs(startSem - endSem) < 1e-9:
+            return [(startB, Message("pitchwheel", channel=ch, pitch=_semToBend(startSem, self.pitchBendRange), time=0))]
+        nSteps = max(2, int(leaf.durationSec * self.pitchwheelResolution))
+        return [
+            (startB + i / nSteps * (endB - startB),
+             Message("pitchwheel", channel=ch,
+                     pitch=_semToBend(startSem + i / (nSteps - 1) * (endSem - startSem), self.pitchBendRange), time=0))
+            for i in range(nSteps)
+        ]
 
-        bendStart = _semToBend(startSem, self.pitchBendRange)
-        bendEnd   = _semToBend(endSem,   self.pitchBendRange)
-        ch        = self.channel
-
-        # flat — just two messages
-        if bendStart == bendEnd:
-            return [
-                (startB, Message("pitchwheel", channel=ch, pitch=bendStart, time=0)),
-                (endB,   Message("pitchwheel", channel=ch, pitch=bendEnd,   time=0)),
-            ]
-
-        # glissando — interpolate at pitchwheelResolution steps per second
-        durationSec = leaf.durationSec
-        nSteps      = max(2, int(durationSec * self.pitchwheelResolution))
-        msgs        = []
-        for i in range(nSteps):
-            t       = i / (nSteps - 1)
-            sem     = startSem + t * (endSem - startSem)
-            bend    = _semToBend(sem, self.pitchBendRange)
-            beats   = startB + t * (endB - startB)
-            msgs.append((beats, Message("pitchwheel", channel=ch, pitch=bend, time=0)))
-        return msgs
-
-    def _ccMessages(self, leaf, bpm: float) -> list:
-        """Emit CC messages from leaf.envelopes, skipping pitchwheel and glissando."""
-        from mido import Message
-        from .Grid import Grid
-
-        out     = []
-        startB  = _secToBeats(leaf.startTimeSec, bpm)
-        endB    = _secToBeats(leaf.endTimeSec,   bpm)
-
-        for key, env in leaf.envelopes.items():
-            if key in ("pitchwheel", "glissando"):
-                continue   # pitchwheel is in leaf.data; glissando is analytical
-
-            if key == "aftertouch":
-                out.extend(self._aftertouchMessages(leaf, env, bpm))
-                continue
-
-            # generic CC
-            ccNum  = _ccNumber(key)
-            xGrid  = Grid.series(leaf.startTimeSec, 0.001, int(leaf.durationSec * 1000))
-            yGrid  = Grid.series(0, 1, 128)
-            for timeSec, value in env.mapToGrid(xGrid, yGrid):
-                beats = _secToBeats(timeSec, bpm)
-                out.append((
-                    beats,
-                    Message("control_change", channel=self.channel,
-                            control=ccNum, value=int(value), time=0),
-                ))
-
-        # always emit pitchwheel (even if only leaf.data["pitchMidi"] is set)
-        out.extend(self._pitchwheelMessages(leaf, startB, endB))
-
+    def _envelopeMessages(self, leaf, env, bpm: float, make) -> list:
+        """Sample `env` over the leaf at ccResolution per second; a message
+        (make(value 0..127)) whenever the rounded value changes."""
+        n = max(2, int(leaf.durationSec * self.ccResolution) + 1)
+        out, last = [], None
+        for i in range(n):
+            xn = i / (n - 1)
+            value = int(min(127, max(0, round(env.getValue(xn, normalizedX=True)))))
+            if value != last:
+                out.append((_secToBeats(leaf.startTimeSec + xn * leaf.durationSec, bpm), make(value)))
+                last = value
         return out
 
-    def _aftertouchMessages(self, leaf, env, bpm: float) -> list:
-        """Emit channel aftertouch from a dynamic Envelope."""
+    def _ccMessages(self, leaf, bpm: float) -> list:
+        """CC / aftertouch messages from leaf.envelopes (pitchwheel and glissando keys are skipped)."""
         from mido import Message
-        from .Grid import Grid
 
-        xGrid = Grid.series(leaf.startTimeSec, 0.001, int(leaf.durationSec * 1000))
-        yGrid = Grid.series(0, 1, 128)
-        out   = []
-        for timeSec, value in env.mapToGrid(xGrid, yGrid):
-            beats = _secToBeats(timeSec, bpm)
-            out.append((
-                beats,
-                Message("aftertouch", channel=self.channel,
-                        value=int(value), time=0),
-            ))
+        ch, out = leaf.midiChannel, []
+        for key, env in leaf.envelopes.items():
+            if key in ("pitchwheel", "glissando"):
+                continue
+            if key == "aftertouch":
+                make = lambda v: Message("aftertouch", channel=ch, value=v, time=0)
+            else:
+                cc = _ccNumber(key)
+                make = lambda v, cc=cc: Message("control_change", channel=ch, control=cc, value=v, time=0)
+            out.extend(self._envelopeMessages(leaf, env, bpm, make))
         return out
 
 
@@ -484,7 +456,8 @@ class JsonExporter(Exporter):
                     "x_range": list(env.x_range) if env.x_range else None,
                     "y_range": list(env.y_range) if env.y_range else None,
                     "points":  env.points,
-                }
+                    "curves":  env.getCurves(),
+                } if hasattr(env, "points") else env
                 for key, env in node.envelopes.items()
             }
         return out
@@ -623,8 +596,10 @@ class MusicXmlExporter(Exporter):
     doesn't fit its measure, corrupting the note's timing. Splitting it
     correctly ourselves avoids that.
 
+    Microtonal pitch (pitchMidi + start bend) is written via music21
+    (quarter tones as accidentals, other microtones as alter values).
+
     Not yet implemented:
-        - Microtonal pitch
         - Envelope / CC data
         - Automatic time / key signature inference (a single fixed
           timeSignature is used throughout — see above)
@@ -714,23 +689,7 @@ class MusicXmlExporter(Exporter):
         bpm    = float(to.data.get("bpm") or getattr(to, "bpm", 60.0))
         barLen = m21.meter.TimeSignature(self.timeSignature).barDuration.quarterLength
 
-        # --- assign each leaf a track via greedy interval colouring ---
-        active: list[tuple[float, int]] = []
-        nextTrack = 0
-        for leaf in sorted(leaves, key=lambda c: (c.startTimeSec, c.endTimeSec)):
-            free = min(
-                ((end, tr) for end, tr in active if end <= leaf.startTimeSec),
-                key=lambda x: x[0], default=None,
-            )
-            if free is None:
-                tr = nextTrack; nextTrack += 1
-            else:
-                tr = free[1]
-                active = [(e, t) for e, t in active if t != tr]
-            leaf.midiTrackIndex = tr
-            active.append((leaf.endTimeSec, tr))
-
-        nTracks = nextTrack
+        nTracks = _assignTracks(leaves)
 
         # --- convert every leaf to beats up front, and find how many ---
         # --- bars of `timeSignature` the whole piece needs           ---
@@ -772,14 +731,16 @@ class MusicXmlExporter(Exporter):
             measures.append(partMeasures)
 
         for leaf, offsetBeats, durationBeats in leafBeats:
-            midiNote      = int(round(float(leaf.data.get("pitchMidi", 60.0))))
+            # sounding pitch incl. the start bend; music21 writes quarter tones
+            # as accidentals and other microtones as <alter>
+            bend          = leaf.data.get("pitchwheel", (0.0, 0.0))[0]
+            midiPs        = round(float(leaf.data.get("pitchMidi", 60.0))) + float(bend)
             fragments     = list(self._splitAtBarlines(offsetBeats, durationBeats, barLen))
             trackMeasures = measures[leaf.midiTrackIndex]
             for i, (measureIdx, localOffset, fragDur) in enumerate(fragments):
-                note = m21.note.Note(
-                    m21.pitch.Pitch(midiNote),
-                    duration=m21.duration.Duration(fragDur),
-                )
+                pitch = m21.pitch.Pitch()
+                pitch.ps = midiPs
+                note = m21.note.Note(pitch, duration=m21.duration.Duration(fragDur))
                 if len(fragments) > 1:
                     note.tie = m21.tie.Tie(
                         'start' if i == 0 else

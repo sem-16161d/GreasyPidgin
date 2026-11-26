@@ -15,7 +15,7 @@ referenceAHz is only used when converting to Hz for audio output.
 Constructors
 ------------
 PitchGrid(values, ...)
-    Direct construction from MIDI floats, SPN strings, or Hz floats.
+    Direct construction from MIDI floats or SPN strings.
 
 PitchGrid.fromTuningSystem(ts, lowestPitch, highestPitch, ...)
     All pitches of a TuningSystem within a register.
@@ -38,13 +38,12 @@ Example
     )
     pg.toMidi('/tmp/dorian.mid')
 """
-from random import random
 from GreasyPidgin.Normalisation import scale
 from GreasyPidgin.Envelope import Envelope
 from GreasyPidgin.Grid import Grid
 from GreasyPidgin.Pitch import mtof, forceIntoRangeMidi
 from GreasyPidgin.TuningSystemAndScaleMask import (
-    TuningSystem, ScaleMask, TUNING_SYSTEMS,
+    TuningSystem, TUNING_SYSTEMS,
     _toMidi, _circDist,
 )
 
@@ -479,7 +478,15 @@ class PitchGrid(Grid):
         pg.scaleRoot          = self.scaleRoot
         return pg
 
-    def melodicContourFromEnvelope(self,env = Envelope([random() for _ in range(5)]), numNotes=16):
+    def melodicContourFromEnvelope(self, env=None, numNotes=16):
+        """
+        numNotes pitches following *env* (sampled evenly, scaled from
+        lowestPitch to highestPitch, quantised to this grid). Without an
+        envelope a new random 5-point contour is drawn on every call.
+        """
+        from random import random
+        if env is None:
+            env = Envelope([random() for _ in range(5)])
         melodicContourMidi = []
         for n in range(numNotes):
             # numNotes == 1 has no span to spread across (n/(numNotes-1)
@@ -549,12 +556,12 @@ class PitchGrid(Grid):
     def makeChordFromTopNote(
         self,
         topNote: float | str,
-        primaryIntervals: list[int] = [1, 7, 9],
+        primaryIntervals: list[int] = (1, 7, 9),
         numPrimaryNotes: int = 4,
         numMaxNotes: int = 8,
         clusterChance: float = 0.1,
         minPitch: float | str = 48.0,
-        clusterIntervals: list[float] = [-2, -1, 1, 2],
+        clusterIntervals: list[float] = (-2, -1, 1, 2),
         *,
         pitchUnit: str = 'midi',
         referenceAHz: float = 440.0,
@@ -574,7 +581,8 @@ class PitchGrid(Grid):
            neighbour offset by a random value from *clusterIntervals*
            (quantised and different from the primary note itself).
         3. Force all pitches into [minPitch, topNote] via octave shifts
-           before returning.
+           (and back onto the grid); a pitch that cannot fit (range narrower
+           than an octave) is dropped.
         4. Return *topNote* guaranteed first, followed by a random sample
            of the remaining notes up to *numMaxNotes* total, all converted
            back to *pitchUnit*.
@@ -630,10 +638,14 @@ class PitchGrid(Grid):
                     clusterNotes.append(choice(candidatesFiltered))
 
         # --- step 3: force into range before output ---
-        potentialPitches = [
-            forceIntoRangeMidi(p, loMidi, topMidi)
-            for p in primaryChord + clusterNotes
-        ]
+        potentialPitches = []
+        for p in primaryChord + clusterNotes:
+            try:
+                folded = self.quantise(forceIntoRangeMidi(p, loMidi, topMidi))
+            except RuntimeError:
+                continue
+            if loMidi <= folded <= topMidi:
+                potentialPitches.append(folded)
 
         # --- step 4: assemble and convert back to pitchUnit ---
         n          = min(numMaxNotes - 1, len(potentialPitches))
@@ -642,7 +654,7 @@ class PitchGrid(Grid):
         if pitchUnit == 'hz':
             return [mtof(m, referenceAHz) for m in chosenMidi]
         elif pitchUnit == 'spn':
-            from .Pitch import mtospn
+            from .Pitch import mtospn  # noqa: F811
             return [mtospn(m) for m in chosenMidi]
         else:
             return chosenMidi

@@ -1,5 +1,5 @@
 from pythonosc.dispatcher import Dispatcher
-from pythonosc.osc_server import ThreadingOSCUDPServer
+from pythonosc.osc_server import BlockingOSCUDPServer
 from pythonosc.udp_client import SimpleUDPClient
 import threading
 
@@ -43,6 +43,14 @@ class HandlerRegistry:
 
 
 class OSCBridge:
+    """
+    OSC in/out for live use (e.g. with Max via [udpsend] / [udpreceive]).
+
+    Incoming messages are handled one at a time, in arrival order, on one
+    server thread (threaded=True runs that thread in the background).
+    Register handlers with bridge.handlers.add(address, fn); control
+    messages: /osc/run <address> <0|1>, /osc/remove <address>, /osc/list.
+    """
 
     def __init__(self,
                  in_ip="127.0.0.1", in_port=12345,
@@ -59,7 +67,9 @@ class OSCBridge:
         self.dispatcher = Dispatcher()
         self.dispatcher.set_default_handler(self._receive)
 
-        self.server = ThreadingOSCUDPServer((self.in_ip, self.in_port), self.dispatcher)
+        # one handler at a time, in order: a thread per packet (ThreadingOSCUDPServer)
+        # would let handlers race and reorder a live stream
+        self.server = BlockingOSCUDPServer((self.in_ip, self.in_port), self.dispatcher)
         self._thread = None
 
     # ---------- send ----------
@@ -71,6 +81,10 @@ class OSCBridge:
         # print(f"[OSC IN] {address} {args}")
 
         # control channel
+        if address in ("/osc/run", "/osc/remove") and len(args) < (2 if address == "/osc/run" else 1):
+            self.send("/osc/error", address, "missing arguments")
+            return
+
         if address == "/osc/run":
             # /osc/run <address> <0|1>
             addr = str(args[0])
@@ -97,7 +111,7 @@ class OSCBridge:
 
     # ---------- server control ----------
     def start(self):
-        print("Stop with KeyboardInterrupt: CRTL+C")
+        print("Stop with KeyboardInterrupt: CTRL+C")
         if self.threaded:
             if self._thread and self._thread.is_alive():
                 return

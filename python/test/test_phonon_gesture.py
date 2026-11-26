@@ -89,3 +89,9 @@ def test_from_lists_accepts_markings():
 def test_empty_pitch_raises():
     with pytest.raises(ValueError):
         Phonon(0, 1, [])
+
+
+def test_nested_gesture_quantise_uses_absolute_time():
+    outer = Gesture(10, [Gesture(2, [Phonon(0.3, 1, 60)])])
+    outer.quantiseTime(TimeGrid.series(0, 0.5, 40))
+    assert [leaf.startTimeSec for leaf in outer.flatten()] == [12.5]

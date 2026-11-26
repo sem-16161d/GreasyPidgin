@@ -11,8 +11,9 @@ A Phrase is initialised with:
 
     voices : dict[str, Envelope]
         One envelope per voice. Each envelope encodes a step-function score
-        as (timeSec, elementIndex) breakpoint pairs, where timeSec is
-        relative to the Phrase's own startTimeSec.
+        as (time, elementIndex) breakpoint pairs, where time is in timeUnit
+        (seconds by default, or beats at bpm) and relative to the Phrase's
+        own startTimeSec.
 
         Example — one voice that plays element 1, then rests, then element 2:
             Envelope([(0.0, 1), (2.0, 0), (4.0, 2)])
@@ -51,7 +52,7 @@ Usage
     phrase.toMidi('/tmp/phrase.mid')
 """
 
-from GreasyPidgin.TimeGrid import beatToSec, secToBeat
+from GreasyPidgin.TimeGrid import beatToSec
 from GreasyPidgin.TemporalObject import TemporalObject
 from GreasyPidgin.Phonon import Phonon
 from GreasyPidgin.Gesture import Gesture
@@ -84,6 +85,8 @@ class Phrase(TemporalObject):
             },
         )
 
+        if timeUnit not in ('seconds', 's', 'beats', 'b'):
+            raise ValueError(f"Phrase: '{timeUnit}' is not a valid timeUnit. Use 's', 'seconds', 'b', or 'beats'.")
         self.elements:  dict[int, TemporalObject | None] = elements or {0: None}
         self.voices:    dict[str, Envelope]              = voices   or {}
         self.bpm        = float(bpm)
@@ -117,9 +120,10 @@ class Phrase(TemporalObject):
         x_min, x_max = env.x_range
         x_span = (x_max - x_min) if x_max != x_min else 1.0
 
+        toSec = (lambda t: beatToSec(t, self.bpm)) if self.timeUnit in ('beats', 'b') else float
         breakpoints: list[tuple[float, int]] = []
         for x_norm, y_norm in sorted(env.points, key=lambda p: p[0]):
-            timeSec = x_min + x_norm * x_span
+            timeSec = toSec(x_min + x_norm * x_span)
             index   = int(round(y_min + y_norm * y_span))
             breakpoints.append((timeSec, index))
 
@@ -167,11 +171,18 @@ class Phrase(TemporalObject):
                     latestEnd = max(latestEnd, nextTime)
                     continue
 
-                # clone the element, override start and duration
-                child              = elem.clone()
-                child.startTimeSec = timeSec        # relative to Phrase start
-                child.durationSec  = slotDur
-                child.endTimeSec   = timeSec + slotDur
+                # clone the element, override start and duration (relative to
+                # the Phrase); a container is stretched so its children fit,
+                # a Phonon drops old leaves (they are rebuilt on export)
+                child = elem.clone()
+                child.startTimeSec = timeSec
+                if isinstance(child, Phonon):
+                    child.children = [c for c in child.children if isinstance(c, Phonon)]
+                if child.children and child.durationSec > 0:
+                    child.stretchTime(slotDur / child.durationSec)
+                child.setDuration(slotDur)
+                if isinstance(child, Phonon):
+                    child._updateBeats()
 
                 # propagate tempo if not already set
                 if hasattr(child, 'data'):

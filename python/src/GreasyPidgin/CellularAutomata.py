@@ -16,7 +16,7 @@ Usage
     # Wolfram rule 30
     rule = CellularRules.elementaryWolfram(30)
     ca   = CellularAutomaton(rules=rule, dimension=1)
-    ca.gen0fromInteger(1)        # single active cell
+    ca.gen0fromSingleCell(32)    # one active cell in the middle of 32
     ca.iterate(20)
     env  = ca.generationsToEnvelope()
 
@@ -217,10 +217,7 @@ class CellularAutomaton:
         maxNumCells : int
             Pad to this many cells. -1 = use minimum required width.
         """
-        if maxNumCells > 0:
-            bits = [int(b) for b in format(n, f"0{maxNumCells}b")]
-        else:
-            bits = [int(b) for b in format(n, "b")]
+        bits = intToBinary(n, maxNumCells)
         self.gen0 = bits
         self.generations[0] = list(bits)
 
@@ -262,8 +259,13 @@ class CellularAutomaton:
         Run the automaton forward for numIterations steps.
 
         startIndex : int | None
-            Generation to start from. None = latest generation.
+            Generation to start from. None = latest generation. Later
+            generations are discarded and computed again.
         """
+        if not self.rules.lookup:
+            raise ValueError(
+                "CellularAutomaton.iterate: no rule set, use e.g. "
+                "CellularAutomaton(rules=CellularRules.elementaryWolfram(30))")
         if startIndex is None:
             fromKey = self._lastGenerationKey()
         elif startIndex in self.generations:
@@ -273,6 +275,7 @@ class CellularAutomaton:
                 f"CellularAutomaton.iterate: {startIndex} not in generations "
                 f"{list(self.generations.keys())}")
 
+        self.generations = {k: v for k, v in self.generations.items() if k <= fromKey}
         match self.rules.ruleType:
             case 'wolfram':
                 for _ in range(numIterations):
@@ -350,9 +353,9 @@ def intToBinary(n: int, size: int = -1) -> list[int]:
  
         Examples
         --------
-        >>> CellularAutomaton.intToBinary(6)
+        >>> intToBinary(6)
         [1, 1, 0]
-        >>> CellularAutomaton.intToBinary(6, size=8)
+        >>> intToBinary(6, size=8)
         [0, 0, 0, 0, 0, 1, 1, 0]
         """
         if n < 0:
@@ -369,11 +372,11 @@ def binaryToInt(bits: list[int]) -> int:
 
         Examples
         --------
-        >>> CellularAutomaton.binaryToInt([1, 1, 0])
+        >>> binaryToInt([1, 1, 0])
         6
-        >>> CellularAutomaton.binaryToInt([0, 0, 0, 0, 0, 1, 1, 0])
+        >>> binaryToInt([0, 0, 0, 0, 0, 1, 1, 0])
         6
-        >>> CellularAutomaton.binaryToInt([0])
+        >>> binaryToInt([0])
         0
         """
         result = 0

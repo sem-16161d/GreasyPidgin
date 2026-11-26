@@ -13,7 +13,7 @@ Construction
     Gesture.fromMidiFile('/tmp/in.mid')
 """
 
-from GreasyPidgin.TimeGrid import beatToSec, secToBeat
+from GreasyPidgin.TimeGrid import beatToSec, midiTempoMap
 from GreasyPidgin.IterableOperations import ensureList
 from GreasyPidgin.TemporalObject import TemporalObject
 from GreasyPidgin.Phonon import Phonon
@@ -211,13 +211,13 @@ class Gesture(TemporalObject):
     # ------------------------------------------------------------------
 
     def quantiseTime(
-        self, timeGrid, durationThresholdSec: float = 0.001
+        self, timeGrid, durationThresholdSec: float = 0.001, parentalStartSec: float = 0.0
     ) -> None:
         """
-        Quantise all leaf times to *timeGrid*, then remove any children
-        whose duration fell below *durationThresholdSec*.
+        Quantise all note times (absolute) to *timeGrid*, then remove any
+        children whose duration fell below *durationThresholdSec*.
         """
-        super().quantiseTime(timeGrid)
+        super().quantiseTime(timeGrid, parentalStartSec)
         self.children = [
             c for c in self.children
             if c.durationSec > durationThresholdSec
@@ -395,35 +395,13 @@ class Gesture(TemporalObject):
         >>> # Kick drum only
         >>> g = Gesture.fromMidiFile('/tmp/drums.mid', pitches=36)
         """
-        from mido import MidiFile, MetaMessage, Message, tempo2bpm
+        from mido import MidiFile, Message
 
         pitchSet = None if pitches is None else ({pitches} if isinstance(pitches, int) else set(pitches))
         midiFile = MidiFile(path)
         tpb      = midiFile.ticks_per_beat
 
-        # tempo map from all tracks: [(tick, tempo)] -> piecewise tick -> seconds
-        tempos = []
-        for track in midiFile.tracks:
-            tick = 0
-            for msg in track:
-                tick += msg.time
-                if isinstance(msg, MetaMessage) and msg.type == 'set_tempo':
-                    tempos.append((tick, msg.tempo))
-        tempos.sort(key=lambda t: t[0])
-        if not tempos or tempos[0][0] > 0:
-            tempos.insert(0, (0, 500000))            # MIDI default = 120 bpm
-        segments, sec = [], 0.0                      # (startTick, startSec, tempo)
-        for i, (tick, tempo) in enumerate(tempos):
-            if segments:
-                lastTick, lastSec, lastTempo = segments[-1]
-                sec = lastSec + (tick - lastTick) * lastTempo / 1e6 / tpb
-            segments.append((tick, sec, tempo))
-
-        def tickToSec(tick: int) -> float:
-            seg = next(s for s in reversed(segments) if s[0] <= tick)
-            return round(seg[1] + (tick - seg[0]) * seg[2] / 1e6 / tpb, 6)
-
-        bpm = float(tempo2bpm(segments[0][2]))
+        tickToSec, bpm = midiTempoMap(midiFile)
 
         openNotes: dict[tuple[int, int], list] = {}   # (channel, pitch) -> [(startSec, velocity, bend)]
         bend:      dict[int, float]            = {}   # channel -> semitones
@@ -477,5 +455,5 @@ class Gesture(TemporalObject):
             f"   bpm      : {bpm}\n"
             f"   children : {len(self.children)}"
             + (f" {[type(c).__name__ for c in self.children]}" if self.children else "")
-            + f"\n)"
+            + "\n)"
         )

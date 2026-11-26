@@ -42,6 +42,23 @@ function ftom(freq, referenceA4 = 440) {
     return 69 + 12 * Math.log2(Number(freq) / referenceA4);
 }
 
+/** MIDI float -> note name (inverse of spntom): 61 -> 'cs4', 60.5 -> 'cqs4'. Values between
+    supported microtones get the nearest one; ties prefer the simpler accidental. */
+function mtospn(midi) {
+    const m = Number(midi);
+    const accs = Object.entries(ACCIDENTAL_OFFSETS);
+    let best = null;
+    for (let octave = Math.floor(m / 12) - 2; octave <= Math.floor(m / 12); octave++) {
+        for (const [letter, base] of Object.entries(NOTE_OFFSETS)) {
+            accs.forEach(([acc, off], rank) => {
+                const err = Math.round(Math.abs(12 * (octave + 1) + base + off - m) * 1e9) / 1e9;
+                if (best === null || err < best[0] || (err === best[0] && rank < best[1])) best = [err, rank, `${letter}${acc}${octave}`];
+            });
+        }
+    }
+    return best[2];
+}
+
 function spntof(spn, referenceA4 = 440) {
     return mtof(spntom(spn), referenceA4);
 }
@@ -56,4 +73,4 @@ function forceIntoRangeMidi(value, lo, hi, maxIter = 10) {
     throw new Error(`forceIntoRangeMidi: cannot find a solution for ${value} higher than ${lo} and lower than ${hi}`);
 }
 
-if (typeof exports !== "undefined") Object.assign(exports, { spntom, mtof, ftom, spntof, forceIntoRangeMidi });
+if (typeof exports !== "undefined") Object.assign(exports, { spntom, mtospn, mtof, ftom, spntof, forceIntoRangeMidi });

@@ -1,23 +1,25 @@
+from numbers import Number
+
 
 def flatten(x):
-    if isinstance(x, list):
+    """Yield the items of arbitrarily nested lists / tuples; strings stay whole."""
+    if isinstance(x, (list, tuple)):
         for item in x:
             yield from flatten(item)
-    elif isinstance(x, str):
-        for ch in x:
-            yield ch
     else:
         yield x
 
+
 def isNested(iterable):
-    nested = False
-    if isinstance(iterable,(list,tuple,set)):
-        nested = all([isinstance(item, (tuple, list)) for item in iterable])
-    return nested
+    """True for a non-empty list / tuple / set whose items are all lists or tuples."""
+    return (isinstance(iterable, (list, tuple, set)) and len(iterable) > 0
+            and all(isinstance(item, (tuple, list)) for item in iterable))
+
 
 def ensureList(value):
-    if isinstance(value, (int, float, str)):
-        value = [value]
+    """Wrap a single value (number, string, None-free scalar) in a list; tuples and sets become lists."""
+    if isinstance(value, (Number, str)):
+        return [value]
     if isinstance(value, (tuple, set)):
-        value= list(value)
+        return list(value)
     return value

@@ -336,7 +336,7 @@ class Phonon(TemporalObject):
         """
         self.children = [c for c in self.children if isinstance(c, Phonon)]
         for c in self.children:
-            c.quantiseTime(grid, parentalStartSec + self.startTimeSec)
+            c.quantiseTime(grid, parentalStartSec=parentalStartSec + self.startTimeSec)
         start = float(grid.quantise(parentalStartSec + self.startTimeSec))
         end   = float(grid.quantise(parentalStartSec + self.endTimeSec))
         self.startTimeSec = start - parentalStartSec

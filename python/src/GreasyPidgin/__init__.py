@@ -10,7 +10,11 @@ sem@16161d.net
 __version__ = "0.9.2"
 __author__  = "Sem Ribeiro Albuquerque Wendt"
 
-print(
+import os as _os
+
+# the banner can be silenced with GREASYPIDGIN_QUIET=1 (scripts, OSC, tests)
+if not _os.environ.get("GREASYPIDGIN_QUIET"):
+  print(
     f"\n"
     f"         ,--.          \n"
     f"        ( @° \\         \n"
@@ -35,6 +39,7 @@ from .TemporalObject    import TemporalObject
 from .Phonon            import Phonon
 from .Gesture           import Gesture
 from .Phrase            import Phrase
+from .Envelope          import Envelope
 
 # ---------------------------------------------------------------------------
 # Grids
@@ -42,6 +47,7 @@ from .Phrase            import Phrase
 from .Grid              import Grid
 from .TimeGrid          import TimeGrid, RQQ, beatToSec, secToBeat
 from .PitchGrid         import PitchGrid
+from .DynamicGrid       import DynamicGrid
 
 # ---------------------------------------------------------------------------
 # Tuning systems and scale masks
@@ -57,6 +63,7 @@ from .TuningSystemAndScaleMask import (
 # ---------------------------------------------------------------------------
 from .Pitch import (
     spntom,
+    mtospn,
     mtof,
     ftom,
     spntof,
@@ -82,7 +89,7 @@ from .MarkovChains      import MarkovChain, MarkovRule, MarkovRules
 # ---------------------------------------------------------------------------
 # Exporters
 # ---------------------------------------------------------------------------
-from .Exporters         import MidiExporter, JsonExporter, CsvExporter
+from .Exporters         import MidiExporter, JsonExporter, CsvExporter, MusicXmlExporter
 
 # ---------------------------------------------------------------------------
 # Utilities

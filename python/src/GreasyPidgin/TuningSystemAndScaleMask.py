@@ -15,8 +15,9 @@ semitone values. The 88-key range is just a convention.
 Three parameters control pitch generation (fully independent):
 
     referenceAHz : float
-        Physical frequency of A4. Used only when converting MIDI → Hz
-        for audio output. Does NOT affect pitch class arithmetic.
+        Physical frequency of A4. Used when converting Hz <-> MIDI
+        (pitchUnit='hz' inputs, audio output). Does NOT affect pitch class
+        arithmetic.
         Default: 440.0 Hz.
         Use 415 for baroque, 466 for high baroque, 432 for alternative tuning.
 
@@ -31,13 +32,16 @@ Three parameters control pitch generation (fully independent):
         mask indices are applied.
         None = index 0 of the tuningSystemRoot-shifted list.
 
-All pitch inputs accept MIDI float, SPN string, or Hz float (>20 Hz).
+Pitch inputs are MIDI floats or SPN strings ('bf3'); PitchGrid constructors
+read numbers as Hz with pitchUnit='hz'.
 
 Repeat interval
 ---------------
     Octave   : repeatIntervalSemitones = 12.0
     Tritave  : repeatIntervalSemitones = 12 * log2(3) ≈ 19.02
-    Studie II: repeatIntervalSemitones = None (non-repeating)
+    Studie II: repeatIntervalSemitones = None (non-repeating); an equal-step
+               system then repeats its step instead (stepSemitones): every
+               anchor + k * step is a pitch, with no octave identity
 
 Three constructors
 ------------------
@@ -88,16 +92,16 @@ def _toMidi(value: float | str, referenceAHz: float = 440.0, pitchUnit: str = 'm
     pitchUnit : 'midi' — value is a MIDI float (default)
                 'hz'   — value is a frequency in Hz
                 'spn'  — value is a SPN string ('c4', 'bf3', 'dqs4')
+    Strings are always read as SPN and, in 'spn' mode, numbers as MIDI,
+    so a numeric default (e.g. minPitch=48.0) works in every mode.
     """
-    match pitchUnit:
-        case 'spn':
-            return float(spntom(value if isinstance(value, str) else str(value)))
-        case 'hz':
-            return float(ftom(float(value), referenceAHz))
-        case _:  # 'midi'
-            if isinstance(value, str):
-                return float(spntom(value))   # accept SPN strings even in midi mode
-            return float(value)
+    if isinstance(value, str):
+        return float(spntom(value))
+    if pitchUnit == 'hz':
+        return float(ftom(float(value), referenceAHz))
+    if pitchUnit in ('midi', 'spn'):
+        return float(value)
+    raise ValueError(f"unknown pitchUnit '{pitchUnit}' (use 'midi', 'hz' or 'spn')")
 
 
 def _circDist(a: float, b: float, interval: float) -> float:
@@ -109,46 +113,6 @@ def _circDist(a: float, b: float, interval: float) -> float:
 # ---------------------------------------------------------------------------
 # Pitch class manipulation
 # ---------------------------------------------------------------------------
-
-def _shiftPitchClasses(
-    pc: list[float],
-    root: float,
-    interval: float,
-) -> list[float]:
-    """
-    Rotate pitch classes so *root* lands on index 0.
-
-    pc values are semitone offsets from the system unison (C = 0).
-    root is the MIDI note number of the desired root.
-    We shift by root % interval so the root becomes 0.
-
-    Returns a sorted list of semitone offsets within [0, interval).
-    """
-    rootMod = root % interval
-    return sorted((p - rootMod) % interval for p in pc)
-
-
-def _findNearestIndex(pc: list[float], targetSemitones: float, interval: float) -> int:
-    """Return index of the pitch class nearest to targetSemitones (circular)."""
-    best_i, best_d = 0, float("inf")
-    for i, p in enumerate(pc):
-        d = _circDist(p, targetSemitones % interval, interval)
-        if d < best_d:
-            best_d = d
-            best_i = i
-    return best_i
-
-
-def _rotatePitchClasses(pc: list[float], idx: int) -> list[float]:
-    """Rotate list so *idx* becomes index 0."""
-    return pc[idx:] + pc[:idx]
-
-
-def _applyMask(pc: list[float], indices: list[int]) -> list[float]:
-    """Select pitch classes by mask indices."""
-    n = len(pc)
-    return [pc[i % n] for i in indices if i < n]
-
 
 # ---------------------------------------------------------------------------
 # ScaleMask
@@ -232,13 +196,20 @@ class TuningSystem:
         repeatIntervalSemitones: float | None = 12.0,
         scaleMasks: dict[str, ScaleMask] | None = None,
         metadata: dict | None = None,
+        stepSemitones: float | None = None,
     ) -> None:
         self.name                    = str(name)
-        self.pitchClasses        = sorted(float(p) for p in pitchClasses)
+        # equal step of a non-repeating equal-division system (fromRatio);
+        # None for systems that are a finite list of pitches
+        self.stepSemitones           = float(stepSemitones) if stepSemitones else None
         self.repeatIntervalSemitones = (
             float(repeatIntervalSemitones)
             if repeatIntervalSemitones is not None else None
         )
+        # within one repeat interval: a value equal to the interval (e.g. 2/1)
+        # is the next period's unison, not an extra pitch class
+        ri = self.repeatIntervalSemitones
+        self.pitchClasses = sorted({round(float(p) % ri, 10) if ri else float(p) for p in pitchClasses})
         self.scaleMasks = scaleMasks or {}
         self.metadata   = metadata   or {}
 
@@ -327,6 +298,7 @@ class TuningSystem:
             repeatIntervalSemitones=repeatIntervalSemitones,
             scaleMasks=scaleMasks,
             metadata=metadata,
+            stepSemitones=stepSemitones if repeatIntervalSemitones is None else None,
         )
 
     @classmethod
@@ -344,7 +316,8 @@ class TuningSystem:
 
         Suitable for JI, historical temperaments, maqam approximations.
         Unison (0.0) is added automatically if absent.
-        The repeat interval is inferred from the last value if >= 12.0,
+        The repeat interval is the last value if it is >= 12.0 (that value
+        is then the boundary, not a pitch), otherwise the octave (12.0),
         unless overridden.
 
         Examples
@@ -368,13 +341,8 @@ class TuningSystem:
                 # last value IS the repeat boundary (e.g. 2/1 ratio list)
                 repeatIntervalSemitones = float(pc[-1])
                 pc = [p for p in pc if p < repeatIntervalSemitones]
-            elif len(pc) == 12:
-                # 12 pitch classes not reaching 12.0 — standard octave temperament
-                # (Werckmeister, Kirnberger, meantone etc.)
-                repeatIntervalSemitones = 12.0
             else:
-                # non-standard: use the span of the given values
-                repeatIntervalSemitones = float(pc[-1])
+                repeatIntervalSemitones = 12.0
         else:
             repeatIntervalSemitones = float(repeatInterval)
 
@@ -484,7 +452,6 @@ class TuningSystem:
         low  = _toMidi(lowestPitch,  referenceAHz)
         high = _toMidi(highestPitch, referenceAHz)
 
-        interval = self.repeatIntervalSemitones or 12.0
         nSteps   = len(self.pitchClasses)
 
         # --- step 1: determine the absolute MIDI anchor ---
@@ -495,16 +462,27 @@ class TuningSystem:
             anchor = 0.0  # C, MIDI 0
 
         # --- step 2: generate full chromatic list in register ---
-        # For each pitch class pc[i] and each octave g,
-        # midi = anchor + g*interval + pc[i]
         chromatic: list[tuple[float, int]] = []  # (midiValue, pcIndex)
-        gMin = math.floor((low  - anchor) / interval) - 1
-        gMax = math.ceil( (high - anchor) / interval) + 1
-        for g in range(gMin, gMax + 1):
+        def keep(midi, i):
+            if low - _EPS <= midi <= high + _EPS:
+                chromatic.append((round(midi, 8), i))
+
+        if self.repeatIntervalSemitones is not None or self.stepSemitones is not None:
+            # repeating: midi = anchor + g*interval + pc[i] for every period g;
+            # non-repeating equal steps: midi = anchor + k*step, step index k mod nSteps
+            if self.repeatIntervalSemitones is not None:
+                interval, classes = self.repeatIntervalSemitones, self.pitchClasses
+            else:
+                interval, classes = self.stepSemitones, [0.0]
+            gMin = math.floor((low  - anchor) / interval) - 1
+            gMax = math.ceil( (high - anchor) / interval) + 1
+            for g in range(gMin, gMax + 1):
+                for i, p in enumerate(classes):
+                    keep(anchor + g * interval + p, i if classes is self.pitchClasses else g % nSteps)
+        else:
+            # non-repeating finite set: each pitch exactly once
             for i, p in enumerate(self.pitchClasses):
-                midi = anchor + g * interval + p
-                if low - _EPS <= midi <= high + _EPS:
-                    chromatic.append((round(midi, 8), i))
+                keep(anchor + p, i)
         chromatic.sort(key=lambda x: x[0])
 
         if not chromatic:
@@ -540,10 +518,6 @@ class TuningSystem:
             if relPos in maskSet:
                 result.append(midi)
         return result
-
-    # _generateFromPC is no longer needed — generatePitches does everything.
-    # Kept as a no-op stub for any internal callers during transition.
-
 
     # ------------------------------------------------------------------
     # Utility
@@ -716,11 +690,11 @@ _reg(TuningSystem.fromSemitones("maqamHijaz",
 # ------------------------------------------------------------------
 
 _reg(TuningSystem.fromHz("slendro_approx",
-    [260.4, 295.2, 325.0, 390.5, 433.2], 260.4,
+    [260.4, 295.2, 325.0, 390.5, 433.2], 260.4, repeatIntervalHz=2 * 260.4,
     metadata={"description": "Approximate Javanese Sléndro"}))
 
 _reg(TuningSystem.fromHz("pelog_approx",
-    [260.4, 277.2, 309.4, 347.6, 390.5, 416.2, 463.5], 260.4,
+    [260.4, 277.2, 309.4, 347.6, 390.5, 416.2, 463.5], 260.4, repeatIntervalHz=2 * 260.4,
     metadata={"description": "Approximate Javanese Pélog"}))
 
 _reg(TuningSystem.fromSemitones("AstridsBontempi",
@@ -787,15 +761,17 @@ _12NOTE_SYSTEMS = [
     "edo12",
     "werckmeister1","werckmeister2","werckmeister3","werckmeister4",
     "kirnberger2","kirnberger3","meantoneQC","pythagorean","zeta12",
-    "JI_5limit_major","JI_7limit","AstridsBontempi",
+    "JI_5limit_major","JI_7limit","AstridsBontempi",   # 7 / 7 / 24 steps: skipped below
 ]
 for _name in _12NOTE_SYSTEMS:
-    for _mask in _DIATONIC_MASKS:
-        TUNING_SYSTEMS[_name].addMask(_mask)
+    if len(TUNING_SYSTEMS[_name].pitchClasses) == 12:   # 12-step indices only fit 12 steps
+        for _mask in _DIATONIC_MASKS:
+            TUNING_SYSTEMS[_name].addMask(_mask)
 
-# chromatic for other EDO systems
-for _ts in [edo24, edo31, edo53, edo72]:
-    _ts.addMask(ScaleMask("chromatic", list(range(len(_ts.pitchClasses)))))
+# "chromatic" = every step, for every system that has no mask of that name yet
+for _ts in TUNING_SYSTEMS.values():
+    if "chromatic" not in _ts.scaleMasks:
+        _ts.addMask(ScaleMask("chromatic", list(range(len(_ts.pitchClasses)))))
 
 # Bohlen-Pierce masks
 TUNING_SYSTEMS["bohlenPierce"].addMasks([
