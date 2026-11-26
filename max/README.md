@@ -1,6 +1,8 @@
 # GreasyPidgin in Max — [v8] examples
 
-Examples for the JavaScript port in `../js/` (Envelope, Grid, TemporalObject).
+Examples for the JavaScript port in `../js/`. Every Python module has a JS
+counterpart there (`require("Phonon")`, `require("PitchGrid")`, `require("MarkovChains")`, ...);
+the examples use Envelope, Grid and TemporalObject.
 They use the `[v8]` object, so they need **Max 9**. The classic `[js]` object
 does not understand the modern JavaScript the port is written in.
 
