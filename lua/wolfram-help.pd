@@ -1,0 +1,97 @@
+#N canvas 0 0 700 580 wolfram-help 12;
+#X text 10 10 wolfram~ - Wolfram Elementary Cellular Automaton;
+#X text 10 25 1D \, 2-state \, 3-cell neighbourhood. Rule 0-255.;
+#X text 10 50 CREATION ARGUMENTS:;
+#X text 10 65 [wolfram <rule> <size> <startMode>];
+#X text 10 80 rule      : 0-255 (default 30);
+#X text 10 95 size      : number of cells (default 32);
+#X text 10 110 startMode : centre | random | <integer> (default centre);
+#X text 10 135 INLET MESSAGES:;
+#X text 10 150 bang          - one step forward \, output generation;
+#X text 10 165 float N       - N steps forward \, output last generation;
+#X text 10 180 rule <0-255>  - change rule number \, reset;
+#X text 10 195 size <n>      - resize automaton \, reset;
+#X text 10 210 seed <int>    - set gen0 from binary of integer \, reset;
+#X text 10 225 random        - randomise gen0 \, reset;
+#X text 10 240 centre        - single active centre cell \, reset;
+#X text 10 255 reset         - return to gen0;
+#X text 10 280 OUTLETS:;
+#X text 10 295 1: current generation as a list of 0s and 1s;
+#X text 10 310 2: generation index (float);
+#X text 10 325 3: integer value of generation read as binary number;
+#X text 10 355 --- EXAMPLES ---;
+
+#N canvas 0 0 350 200 example-bang 12;
+#X text 10 10 Bang to step forward one generation;
+#X obj 50 60 wolfram 30 16 centre;
+#X msg 50 35 bang;
+#X connect 2 0 1 0;
+#X restore 10 380 pd example-bang;
+
+#X text 10 398 Step forward with bang;
+
+#N canvas 0 0 400 250 example-rule 12;
+#X text 10 10 Change rule at runtime;
+#X obj 80 100 wolfram 30 16 centre;
+#X msg 30 60 rule 30;
+#X msg 130 60 rule 110;
+#X msg 80 35 bang;
+#X obj 80 140 print gen;
+#X connect 2 0 1 0;
+#X connect 3 0 1 0;
+#X connect 4 0 1 0;
+#X connect 1 0 5 0;
+#X restore 200 380 pd example-rule;
+
+#X text 200 398 Switch rules at runtime;
+
+#N canvas 0 0 400 280 example-seed 12;
+#X text 10 10 Seed gen0 from integer;
+#X obj 80 100 wolfram 110 16 centre;
+#X msg 30 60 seed 123;
+#X msg 130 60 random;
+#X msg 80 35 bang;
+#X obj 80 140 print gen;
+#X obj 80 160 print idx;
+#X obj 80 180 print int;
+#X connect 2 0 1 0;
+#X connect 3 0 1 0;
+#X connect 4 0 1 0;
+#X connect 1 0 5 0;
+#X connect 1 1 6 0;
+#X connect 1 2 7 0;
+#X restore 10 430 pd example-seed;
+
+#X text 10 448 Seed with integer or random;
+
+#N canvas 0 0 500 300 example-outputs 12;
+#X text 10 10 All three outlets;
+#X obj 120 80 wolfram 30 8 centre;
+#X msg 120 50 bang;
+#X obj 60 140 print list;
+#X obj 190 140 print genIdx;
+#X obj 290 140 print intVal;
+#X connect 2 0 1 0;
+#X connect 1 0 3 0;
+#X connect 1 1 4 0;
+#X connect 1 2 5 0;
+#X restore 200 430 pd example-outputs;
+
+#X text 200 448 All three outlets;
+
+#N canvas 0 0 500 350 example-metro 12;
+#X text 10 10 Running with metro (rule 110 \, 32 cells);
+#X obj 50 130 wolfram 110 32 centre;
+#X obj 50 100 metro 100;
+#X obj 30 60 toggle;
+#X msg 120 60 reset;
+#X obj 50 170 print gen;
+#X obj 50 190 print idx;
+#X connect 3 0 2 0;
+#X connect 2 0 1 0;
+#X connect 4 0 1 0;
+#X connect 1 0 5 0;
+#X connect 1 1 6 0;
+#X restore 10 480 pd example-metro;
+
+#X text 10 498 Auto-run with metro;

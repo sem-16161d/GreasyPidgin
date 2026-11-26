@@ -3,3 +3,8 @@ __pycache__/
 .DS_Store
 *.egg-info/
 .pytest_cache/
+python/examples/illiac_suite_4/out/
+
+# separate repo / local archive
+tutorial/
+_archive/

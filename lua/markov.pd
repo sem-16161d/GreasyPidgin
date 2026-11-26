@@ -1,0 +1,18 @@
+#N canvas 408 44 973 580 12;
+#X obj 408 311 markov 2, f 19;
+#X obj 310 169 else;
+#X obj 456 156 else/midi;
+#X obj 41 114 midi2score2;
+#X msg 42 52 read /Users/sraw/Documents/GREASY_PIDGIN/GreasyPidgin/PDLUA/scarlatti555.mid;
+#X obj 487 419 cyclone;
+#X obj 121 293 else/score2 scarlatti555.score2.txt;
+#X obj 87 231 tgl 19 0 empty empty empty 0 -10 0 12 #fcfcfc #000000 #000000 0 1;
+#X obj 153 361 mtof;
+#X obj 154 389 osc~;
+#X obj 154 438 dac~;
+#X obj 121 328 sel r;
+#X connect 4 0 3 0;
+#X connect 6 0 11 0;
+#X connect 7 0 6 0;
+#X connect 8 0 9 0;
+#X connect 11 1 8 0;

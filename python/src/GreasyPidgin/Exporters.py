@@ -741,7 +741,8 @@ class MusicXmlExporter(Exporter):
             offsetBeats   = leaf.startTimeSec * leafBpm / 60.0
             leafBeats.append((leaf, offsetBeats, durationBeats))
             lastMeasureIndex = max(
-                lastMeasureIndex, int((offsetBeats + durationBeats) // barLen)
+                # a note ending exactly on a barline does not start another bar
+                lastMeasureIndex, int((offsetBeats + durationBeats - 1e-9) // barLen)
             )
         nMeasures = lastMeasureIndex + 1
 

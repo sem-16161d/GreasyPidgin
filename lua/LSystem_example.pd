@@ -1,0 +1,4 @@
+#N canvas 907 641 450 300 12;
+#X obj 224 181 cyclone/coll;
+#C restore;
+#X obj 123 90 LSystem;
