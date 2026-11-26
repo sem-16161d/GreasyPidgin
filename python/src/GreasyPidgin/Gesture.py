@@ -17,6 +17,7 @@ from GreasyPidgin.TimeGrid import beatToSec, secToBeat
 from GreasyPidgin.IterableOperations import ensureList
 from GreasyPidgin.TemporalObject import TemporalObject
 from GreasyPidgin.Phonon import Phonon
+from GreasyPidgin.Envelope import Envelope
 from GreasyPidgin.Exporters import MidiExporter, JsonExporter, CsvExporter, MusicXmlExporter
 
 
@@ -141,7 +142,7 @@ class Gesture(TemporalObject):
         path: str = "/tmp/gesture.mid",
         *,
         bpm: float | None = None,
-        noteSelectKey: str = 'lowest',
+        noteSelectKey: str | None = None,
         trackName: str = "gesture",
         parseEnvelopes: bool = True,
         perNoteTracks: bool = False,
@@ -154,8 +155,6 @@ class Gesture(TemporalObject):
         # MidiExporter always finds it regardless of how the Gesture was built
         if bpm is not None:
             self.data["bpm"] = float(bpm)
-        elif "bpm" not in self.data or not self.data["bpm"]:
-            self.data["bpm"] = float(getattr(self, "bpm", 60.0))
         self._unfoldAll(noteSelectKey)
         self.export(MidiExporter(
             path,
@@ -171,7 +170,7 @@ class Gesture(TemporalObject):
         self,
         path: str = "/tmp/gesture.xml",
         *,
-        noteSelectKey: str = 'lowest',
+        noteSelectKey: str | None = None,
         title: str = "GreasyPidgin Score",
         timeSignature: str = "4/4",
     ) -> None:
@@ -183,7 +182,7 @@ class Gesture(TemporalObject):
         self,
         path: str = "/tmp/gesture.csv",
         *,
-        noteSelectKey: str = 'lowest',
+        noteSelectKey: str | None = None,
     ) -> None:
         """Unfold all Phonons then export to CSV."""
         self._unfoldAll(noteSelectKey)
@@ -193,7 +192,7 @@ class Gesture(TemporalObject):
         self,
         path: str = "/tmp/gesture.json",
         *,
-        noteSelectKey: str = 'lowest',
+        noteSelectKey: str | None = None,
     ) -> None:
         """Unfold all Phonons then export to JSON."""
         self._unfoldAll(noteSelectKey)
@@ -268,7 +267,7 @@ class Gesture(TemporalObject):
             Pitch value(s) per Phonon. Each element is passed directly
             to Phonon's pitch argument (can be single value or list).
         dynamics : list | float
-            Dynamic value per Phonon.
+            Dynamic per Phonon: a number, a marking ('mf', 'pp-f') or an Envelope.
         """
         if not isinstance(size, int) or size < 0:
             raise ValueError(
@@ -323,7 +322,9 @@ class Gesture(TemporalObject):
             delta    = float(startDeltas[i % len(startDeltas)])
             duration = durations[i % len(durations)]
             pitch    = pitches[i % len(pitches)]
-            dynamic  = float(dynamics[i % len(dynamics)])
+            dynamic  = dynamics[i % len(dynamics)]
+            if not isinstance(dynamic, (str, Envelope, list, tuple)):
+                dynamic = float(dynamic)   # markings ('mf', 'pp-f') and envelopes pass through
             start    = lastStart + delta
             lastStart = start
 
@@ -358,20 +359,19 @@ class Gesture(TemporalObject):
         pitches: int | list[int] | None = None,
         startOffsetSec: float = 0.0,
         defaultDurationSec: float = 0.1,
+        pitchBendRange: int = 4096,
     ) -> "Gesture":
         """
         Import a MIDI file track as a Gesture of Phonons.
 
-        Each note_on / note_off pair becomes one Phonon. Tempo and
-        ticksPerBeat are read from the file and preserved on the Gesture
-        so re-export produces a correctly timed MIDI file.
+        Each note_on / note_off pair (matched first-in first-out per channel
+        and pitch) becomes one Phonon with the note's velocity. Tempo changes
+        from ALL tracks are honoured (DAWs put them in track 0); the first
+        tempo becomes the Gesture's bpm.
 
-        Tempo is searched across ALL tracks (DAWs typically place
-        set_tempo in track 0 regardless of note track).
-
-        Pitchwheel messages are read and applied as microtonal offsets
-        (stored in Phonon.data["pitchwheel"]). Velocity is converted
-        to dynamicdB.
+        The pitchwheel value active on a note's channel at its start is added
+        as a microtonal offset: bend / pitchBendRange semitones (4096 = the
+        exporter's default, +-2 semitones for the full wheel).
 
         Parameters
         ----------
@@ -381,10 +381,11 @@ class Gesture(TemporalObject):
         pitches : int | list[int] | None
             None = import all pitches. int or list = filter.
         startOffsetSec : float
-            Additional time offset for the whole Gesture. Note times
-            are stored relative to this offset.
+            Start of the Gesture; note times are stored relative to it.
         defaultDurationSec : float
             Duration used for notes with no matching note_off.
+        pitchBendRange : int
+            Pitchwheel units per semitone.
 
         Example
         -------
@@ -394,115 +395,68 @@ class Gesture(TemporalObject):
         >>> # Kick drum only
         >>> g = Gesture.fromMidiFile('/tmp/drums.mid', pitches=36)
         """
-        from mido import MidiFile, MetaMessage, Message, tempo2bpm, tick2second
-        from GreasyPidgin.Normalisation import scale
+        from mido import MidiFile, MetaMessage, Message, tempo2bpm
 
-        # normalise pitch filter
-        if pitches is None:
-            pitchSet = None
-        elif isinstance(pitches, int):
-            pitchSet = {pitches}
-        else:
-            pitchSet = set(pitches)
+        pitchSet = None if pitches is None else ({pitches} if isinstance(pitches, int) else set(pitches))
+        midiFile = MidiFile(path)
+        tpb      = midiFile.ticks_per_beat
 
-        midiFile     = MidiFile(path)
-        ticksPerBeat = midiFile.ticks_per_beat
-        tempo        = 500000   # MIDI default = 120 bpm
-        bpm          = 120.0
-
-        # search ALL tracks for first tempo marking
-        found_tempo = False
+        # tempo map from all tracks: [(tick, tempo)] -> piecewise tick -> seconds
+        tempos = []
         for track in midiFile.tracks:
+            tick = 0
             for msg in track:
+                tick += msg.time
                 if isinstance(msg, MetaMessage) and msg.type == 'set_tempo':
-                    tempo       = msg.tempo
-                    bpm         = float(tempo2bpm(tempo))
-                    found_tempo = True
-                    break
-            if found_tempo:
-                break
+                    tempos.append((tick, msg.tempo))
+        tempos.sort(key=lambda t: t[0])
+        if not tempos or tempos[0][0] > 0:
+            tempos.insert(0, (0, 500000))            # MIDI default = 120 bpm
+        segments, sec = [], 0.0                      # (startTick, startSec, tempo)
+        for i, (tick, tempo) in enumerate(tempos):
+            if segments:
+                lastTick, lastSec, lastTempo = segments[-1]
+                sec = lastSec + (tick - lastTick) * lastTempo / 1e6 / tpb
+            segments.append((tick, sec, tempo))
 
-        # --- pass 1: collect all events with absolute times ---
-        noteOnQueue:   list[tuple[float, int, int]] = []  # (timeSec, pitch, velocity)
-        noteOffQueue:  list[tuple[float, int]]      = []  # (timeSec, pitch)
-        pitchwheelMap: dict[float, float]           = {}  # timeSec → bend semitones
-        currentTick  = 0
+        def tickToSec(tick: int) -> float:
+            seg = next(s for s in reversed(segments) if s[0] <= tick)
+            return round(seg[1] + (tick - seg[0]) * seg[2] / 1e6 / tpb, 6)
 
+        bpm = float(tempo2bpm(segments[0][2]))
+
+        openNotes: dict[tuple[int, int], list] = {}   # (channel, pitch) -> [(startSec, velocity, bend)]
+        bend:      dict[int, float]            = {}   # channel -> semitones
+        notes:     list[tuple]                 = []   # (startSec, durSec, midiFloat, velocity)
+        tick = 0
         for msg in midiFile.tracks[trackNumber]:
+            tick += msg.time
             if not isinstance(msg, Message):
                 continue
-
-            currentTick += msg.time
-            timeSec = round(tick2second(currentTick, ticksPerBeat, tempo), 6)
-
             if msg.type == 'pitchwheel':
-                # store as semitone offset: bend / 4096 semitones (standard range)
-                pitchwheelMap[timeSec] = msg.pitch / 4096.0
-
+                bend[msg.channel] = msg.pitch / pitchBendRange
             elif msg.type == 'note_on' and msg.velocity > 0:
                 if pitchSet is None or msg.note in pitchSet:
-                    noteOnQueue.append((timeSec, msg.note, msg.velocity))
+                    openNotes.setdefault((msg.channel, msg.note), []).append(
+                        (tickToSec(tick), msg.velocity, bend.get(msg.channel, 0.0)))
+            elif msg.type in ('note_on', 'note_off'):
+                queue = openNotes.get((msg.channel, msg.note))
+                if queue:
+                    start, vel, b = queue.pop(0)
+                    notes.append((start, tickToSec(tick) - start, msg.note + b, vel))
+        for (_, note), queue in openNotes.items():
+            notes.extend((start, defaultDurationSec, note + b, vel) for start, vel, b in queue)
+        notes.sort(key=lambda n: (n[0], n[2]))
 
-            elif msg.type == 'note_off' or (msg.type == 'note_on' and msg.velocity == 0):
-                noteOffQueue.append((timeSec, msg.note))
-
-        # --- pass 2: match note_on → note_off, build Phonons ---
-        # velocity → dB: scale 1-127 → 20-100 dB
-        def velTodB(vel: int) -> float:
-            return float(scale(vel, 1, 127, 20.0, 100.0))
-
-        # find the pitchwheel bend active at a given time
-        # (last pitchwheel message at or before timeSec)
-        sortedBendTimes = sorted(pitchwheelMap.keys())
-        def bendAt(timeSec: float) -> float:
-            active = 0.0
-            for t in sortedBendTimes:
-                if t <= timeSec:
-                    active = pitchwheelMap[t]
-                else:
-                    break
-            return active
-
-        phonons: list[Phonon] = []
-        noteOffRemaining = list(noteOffQueue)
-
-        for startSec, pitch, velocity in noteOnQueue:
-            # find earliest note_off for this pitch
-            endSec = None
-            for i, (offTime, offPitch) in enumerate(noteOffRemaining):
-                if offPitch == pitch and offTime >= startSec:
-                    endSec = offTime
-                    noteOffRemaining.pop(i)
-                    break
-
-            dur        = (endSec - startSec) if endSec is not None else defaultDurationSec
-            dynamicdB  = velTodB(velocity)
-            bend       = bendAt(startSec)
-            midiFloat  = float(pitch) + bend   # fractional MIDI if pitchwheel active
-
-            # time relative to startOffsetSec
-            relStart = startSec - startOffsetSec
-
-            p = Phonon(
-                relStart, dur,
-                pitch=midiFloat,
-                dynamic=dynamicdB,
-                bpm=bpm,
-                timeUnit='seconds',
-                dynamicUnit='dB',
-                ticksPerBeat=ticksPerBeat,
-            )
-            phonons.append(p)
-            print(p)
-        g = cls(
-            startOffsetSec,
-            phonons=phonons,
-            bpm=bpm,
-            ticksPerBeat=ticksPerBeat,
-        )
+        phonons = [
+            Phonon(start - startOffsetSec, dur, pitch=midiFloat, dynamic=vel, bpm=bpm,
+                   timeUnit='seconds', dynamicUnit='midi', ticksPerBeat=tpb)
+            for start, dur, midiFloat, vel in notes
+        ]
+        g = cls(startOffsetSec, phonons=phonons, bpm=bpm, ticksPerBeat=tpb)
         print(
             f"Gesture.fromMidiFile: {len(phonons)} notes | "
-            f"bpm={bpm:.2f} | ticksPerBeat={ticksPerBeat} | "
+            f"bpm={bpm:.2f} | ticksPerBeat={tpb} | "
             f"dur={g.durationSec:.3f}s"
             + (f" | pitches={sorted(pitchSet)}" if pitchSet else "")
         )

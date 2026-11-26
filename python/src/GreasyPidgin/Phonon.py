@@ -5,14 +5,18 @@ Phonon — a musical note-event.
 Extends TemporalObject with pitch vocabulary (midi / hz / spn),
 dynamic, and chord / sequence support.
 
-Pitch and dynamic are stored as envelopes and raw lists on the Phonon.
-Call unfold() to resolve them into TemporalObject children, then export.
+Pitch is stored as a list of chord slots (self.chordSlots): one slot for a
+chord, one single-pitch slot per note for a sequence, one slot per chord for
+a chord sequence. Slots are evenly spaced over the duration. Dynamic is
+stored as envelopes. Call unfold() to resolve them into TemporalObject
+children, then export.
 
-A glissando envelope (self.envelopes["glissando"]) is descriptive/analytical
-only — it does not affect MIDI export.
+A glissando (glissando()) is stored in data["glissandoMidi"] for analysis
+and in data["pitchwheel"] for MIDI export.
 """
 
-from GreasyPidgin.IterableOperations import flatten, isNested
+from collections import Counter
+
 from GreasyPidgin.Normalisation import scale
 from GreasyPidgin.Pitch import ftom, spntom
 from GreasyPidgin.Dynamics import parseDynamicMarking
@@ -20,6 +24,13 @@ from GreasyPidgin.TimeGrid import beatToSec, secToBeat
 from GreasyPidgin.TemporalObject import TemporalObject
 from GreasyPidgin.Envelope import Envelope
 from GreasyPidgin.Exporters import MidiExporter, JsonExporter, CsvExporter, MusicXmlExporter
+
+# noteSelectKey used by unfold() when none is given, per chordOrSeq
+_DEFAULT_SELECT = {"seq": "seq", "s": "seq", "chord": "chord", "c": "chord",
+                   "chordSeq": "chordSeq", "cs": "chordSeq"}
+
+# dB <-> MIDI velocity calibration for dynamicUnit='midi'
+_MIN_DB, _MAX_DB, _MIN_VEL, _MAX_VEL = 20.0, 120.0, 1, 127
 
 
 class Phonon(TemporalObject):
@@ -46,78 +57,43 @@ class Phonon(TemporalObject):
         referenceA: float = 440,
         lyric: str | None = None,
     ) -> None:
-
-        # --- time ---
         startTimeSec, durationSec = self._toSeconds(startTime, duration, timeUnit, bpm)
-
         super().__init__(
             startTimeSec=startTimeSec,
             durationSec=durationSec,
             envelopes=envelopes,
-            data={
-                "bpm":          bpm,
-                "ticksPerBeat": ticksPerBeat,
-            },
+            data={"bpm": bpm, "ticksPerBeat": ticksPerBeat},
         )
+        self._updateBeats()
 
-        # store beat-domain mirrors
-        self.startTimeBeats = secToBeat(startTimeSec, bpm)
-        self.durationBeats  = secToBeat(durationSec, bpm)
-        self.endTimeBeats   = self.startTimeBeats + self.durationBeats
-
-        # store construction params (needed by unfold and glissando)
         self.pitchUnit      = pitchUnit
         self.autoSortChords = autoSortChords
         self.referenceA     = referenceA
         self.chordOrSeq     = chordOrSeq
 
-        # --- pitch ---
-        # allPitches: flat list of all MIDI values mentioned
-        # pitchEnvelopes: one Envelope per voice, x in [0, durationSec]
-        self.allPitches:     list[float]    = []
-        self.pitchEnvelopes: list[Envelope] = []
-        self._parsePitch(pitch, pitchUnit, chordOrSeq, referenceA)
+        # allPitches     : flat list of every MIDI value, in order
+        # chordSlots     : list of chords (lists of MIDI values), evenly spaced
+        # pitchEnvelopes : one step Envelope per voice, x in seconds (analysis)
+        self.allPitches:     list[float]       = []
+        self.chordSlots:     list[list[float]] = []
+        self.pitchEnvelopes: list[Envelope]    = []
+        self._parsePitch(pitch, pitchUnit, chordOrSeq)
 
-        # --- dynamic ---
-        # stored as self.envelopes["dynamic"] (time-varying)
-        # if time-varying (list or Envelope) also stored as
-        # self.envelopes["aftertouch"] for MIDI export
+        # dynamic: envelopes["dynamic"] (dB) and, if time-varying,
+        # envelopes["aftertouch"] (velocity units) for MIDI export
         self._parseDynamic(dynamic, dynamicUnit, durationSec)
 
-        # --- lyric ---
         if lyric is not None:
             self.setLyric(lyric)
 
-    # ------------------------------------------------------------------
-    # Time formatting
-    # ------------------------------------------------------------------
+    def _updateBeats(self) -> None:
+        bpm = float(self.data.get("bpm", 60.0))
+        self.startTimeBeats = secToBeat(self.startTimeSec, bpm)
+        self.durationBeats  = secToBeat(self.durationSec, bpm)
+        self.endTimeBeats   = self.startTimeBeats + self.durationBeats
 
-    # ------------------------------------------------------------------
-    # Clone override — TemporalObject.clone() uses object.__new__ which
-    # bypasses __init__, so Phonon-specific fields must be copied here.
-    # ------------------------------------------------------------------
-
-    def clone(self):
-        import copy
-        obj = super().clone()  # copies all TemporalObject fields
-        obj.pitchUnit      = self.pitchUnit
-        obj.autoSortChords = self.autoSortChords
-        obj.referenceA     = self.referenceA
-        obj.chordOrSeq     = self.chordOrSeq
-        obj.startTimeBeats = self.startTimeBeats
-        obj.durationBeats  = self.durationBeats
-        obj.endTimeBeats   = self.endTimeBeats
-        obj.allPitches     = list(self.allPitches)
-        obj.pitchEnvelopes = [copy.deepcopy(e) for e in self.pitchEnvelopes]
-        return obj
-
-    def _toSeconds(
-        self,
-        startTime: float,
-        duration: float,
-        timeUnit: str,
-        bpm: float,
-    ) -> tuple[float, float]:
+    @staticmethod
+    def _toSeconds(startTime: float, duration: float, timeUnit: str, bpm: float) -> tuple[float, float]:
         match timeUnit:
             case 'seconds' | 's':
                 return float(startTime), float(duration)
@@ -143,203 +119,130 @@ class Phonon(TemporalObject):
             case _:
                 raise ValueError(f"Phonon: unknown pitchUnit '{pitchUnit}'")
 
-    def _parsePitch(
-        self,
-        pitch,
-        pitchUnit: str,
-        chordOrSeq: str,
-        referenceA: float,
-    ) -> None:
+    def _parsePitch(self, pitch, pitchUnit: str, chordOrSeq: str) -> None:
         """
-        Populate self.allPitches and self.pitchEnvelopes.
+        Populate allPitches, chordSlots and pitchEnvelopes.
 
-        seq / s
-            Single value or flat list → one voice, pitches evenly spaced in time.
-        chord / c
-            Flat list → multiple simultaneous voices, each held for full duration.
-        chordSeq / cs
-            Nested list of chords → each chord slot evenly spaced in time,
-            variable number of voices per slot is allowed.
+        seq / s          single value or flat list -> one pitch per slot
+        chord / c        flat list -> one slot, all pitches held together
+        chordSeq / cs    list of chords (an empty chord is a rest)
         """
-        dur = self.durationSec
+        toMidi = lambda p: self._toMidi(p, pitchUnit)
+        sortChord = sorted if self.autoSortChords else list
+        flat = list(pitch) if isinstance(pitch, (list, tuple)) else [pitch]
 
         match chordOrSeq:
-
-            case 'seq' | 's':
-                pitches = self._flattenPitchInput(pitch, pitchUnit)
-                self.allPitches = pitches
-                # one envelope spanning the full duration
-                if len(pitches) == 1:
-                    pts = [(0.0, pitches[0]), (dur, pitches[0])]
+            case 'seq' | 's' | 'chord' | 'c':
+                if any(isinstance(p, (list, tuple)) for p in flat):
+                    raise ValueError(
+                        "Phonon: nested pitch list passed to seq/chord mode. "
+                        "Use chordOrSeq='cs' for chord sequences."
+                    )
+                pitches = [toMidi(p) for p in flat]
+                if chordOrSeq in ('seq', 's'):
+                    self.chordSlots = [[p] for p in pitches]
                 else:
-                    step = dur / len(pitches)
-                    pts  = [(i * step, p) for i, p in enumerate(pitches)]
-                self.pitchEnvelopes = [Envelope(pts).rescale([0, dur])]
-
-            case 'chord' | 'c':
-                pitches = self._flattenPitchInput(pitch, pitchUnit)
-                if self.autoSortChords:
-                    pitches = sorted(pitches)
-                self.allPitches = pitches
-                # one flat envelope per voice
-                self.pitchEnvelopes = [
-                    Envelope([(0.0, p), (dur, p)]).rescale([0, dur])
-                    for p in pitches
-                ]
-
+                    self.chordSlots = [sortChord(pitches)]
             case 'chordSeq' | 'cs':
                 if not isinstance(pitch, (list, tuple)):
-                    raise ValueError(
-                        "Phonon: chordSeq requires a list of chords (nested list)."
-                    )
-                # normalise: each element must itself be a list/tuple of pitches
-                chords: list[list[float]] = []
-                for slot in pitch:
-                    if isinstance(slot, (list, tuple)):
-                        chord = [self._toMidi(p, pitchUnit) for p in slot]
-                    else:
-                        chord = [self._toMidi(slot, pitchUnit)]
-                    if self.autoSortChords:
-                        chord = sorted(chord)
-                    chords.append(chord)
-
-                self.allPitches = list(set(
-                    p for chord in chords for p in chord
-                ))
-
-                # collect one time-position per chord slot
-                nSlots   = len(chords)
-                slotDur  = dur / nSlots
-                slotTimes = [i * slotDur for i in range(nSlots)]
-
-                # find the maximum number of voices across all slots
-                maxVoices = max(len(c) for c in chords)
-
-                # build one envelope per voice track; pad short chords with None
-                voiceTracks: list[list[tuple[float, float]]] = [
-                    [] for _ in range(maxVoices)
+                    raise ValueError("Phonon: chordSeq requires a list of chords (nested list).")
+                self.chordSlots = [
+                    sortChord([toMidi(p) for p in slot]) if isinstance(slot, (list, tuple)) else [toMidi(slot)]
+                    for slot in pitch
                 ]
-                for t, chord in zip(slotTimes, chords):
-                    for v in range(maxVoices):
-                        if v < len(chord):
-                            voiceTracks[v].append((t, chord[v]))
-                        # if this slot has fewer voices than maxVoices,
-                        # that voice simply has no point here — the envelope
-                        # will interpolate across the gap
-
-                self.pitchEnvelopes = [
-                    Envelope(pts).rescale([0, dur])
-                    for pts in voiceTracks
-                    if len(pts) >= 2  # need at least 2 points for an envelope
-                ]
-                # single-point voices (only appeared once) stored as flat env
-                for pts in voiceTracks:
-                    if len(pts) == 1:
-                        t, p = pts[0]
-                        self.pitchEnvelopes.append(
-                            Envelope([(0.0, p), (dur, p)]).rescale([0, dur])
-                        )
-
             case _:
                 raise ValueError(
                     f"Phonon: unknown chordOrSeq '{chordOrSeq}'. "
                     "Use 'seq'/'s', 'chord'/'c', or 'chordSeq'/'cs'."
                 )
 
-    def _flattenPitchInput(
-        self, pitch, pitchUnit: str
-    ) -> list[float]:
-        """Convert any flat pitch input (single value or flat list) to MIDI floats."""
-        if isinstance(pitch, (list, tuple)):
-            if isNested(pitch):
-                raise ValueError(
-                    "Phonon: nested pitch list passed to seq/chord mode. "
-                    "Use chordOrSeq='cs' for chord sequences."
-                )
-            return [self._toMidi(p, pitchUnit) for p in pitch]
-        return [self._toMidi(pitch, pitchUnit)]
+        self.allPitches = [p for chord in self.chordSlots for p in chord]
+        if not self.allPitches:
+            raise ValueError("Phonon: pitch is empty")
+        self.pitchEnvelopes = self._voiceEnvelopes()
+
+    def _voiceEnvelopes(self) -> list[Envelope]:
+        """One step envelope per voice (voice v = v-th pitch of each chord),
+        x in seconds; slots where a voice is missing are skipped."""
+        dur      = self.durationSec
+        slotDur  = dur / len(self.chordSlots)
+        nVoices  = max(len(c) for c in self.chordSlots)
+        envs     = []
+        for v in range(nVoices):
+            pts = [(i * slotDur, c[v]) for i, c in enumerate(self.chordSlots) if v < len(c)]
+            if len(pts) == 1 or dur == 0:
+                pts = [pts[0], (dur, pts[0][1])]
+            envs.append(Envelope(pts, curves=["step"] * (len(pts) - 1)))
+        return envs
 
     # ------------------------------------------------------------------
     # Dynamic parsing
     # ------------------------------------------------------------------
 
-    def _parseDynamic(
-        self,
-        dynamic: float | int | list | tuple | Envelope | str,
-        dynamicUnit: str,
-        durationSec: float,
-    ) -> None:
+    def _parseDynamic(self, dynamic, dynamicUnit: str, durationSec: float) -> None:
         """
-        Parse dynamic input into self.envelopes["dynamic"].
+        Parse dynamic input.
 
-        A single value → flat envelope → stored as data["dynamicdB"].
-        A list or Envelope → time-varying → stored as envelopes["dynamic"]
-                             AND envelopes["aftertouch"] for MIDI export.
-        A dynamic-marking string ('pp', 'mf', ...) or hairpin
-        ('pp-mp', 'ff>mp') is parsed via GreasyPidgin.Dynamics and
-        treated as MIDI velocity regardless of dynamicUnit — a plain
-        marking becomes a flat value, a hairpin becomes a time-varying
-        crescendo/diminuendo across the note's duration. The raw text
-        is also kept on data["dynamicMarking"] for introspection/export.
+        A single value       -> data["dynamicdB"] (note-on velocity) and a
+                                flat envelopes["dynamic"].
+        A list or Envelope   -> time-varying: envelopes["dynamic"] in dB and
+                                envelopes["aftertouch"] in MIDI velocity units
+                                (channel aftertouch on export); the note-on
+                                velocity is the first value. A list is spread
+                                evenly over the duration, an Envelope keeps its
+                                own shape and curves, stretched over the duration.
+        A marking string     -> 'pp', 'mf', ... (flat) or a hairpin 'pp-mp',
+                                'ff>mp' (time-varying), always velocity-scale;
+                                the text is kept in data["dynamicMarking"].
+
+        dynamicUnit 'midi' values are velocities (1..127), mapped to 20..120 dB
+        with a calibration the exporter uses to map them back exactly. 'dB'
+        values use the exporter's 0..100 dB -> 0..127 velocity window.
         """
-        mindB    = 20.0
-        maxdB    = 120.0
-        minVelo  = 1       # MIDI velocity 0 is note-off, so 1 is the floor
-        maxVelo  = 127
-
-        # Calibration handed to MidiExporter alongside dynamicdB so it can
-        # map dB back to exactly the velocity scale the value came from.
-        # Only attached for dynamicUnit='midi' -- raw dB input keeps the
-        # exporter's legacy 0..100 dB -> 0..127 window.
-        calibration = {
-            "minDb":        mindB,
-            "maxDb":        maxdB,
-            "minVelocity":  minVelo,
-            "maxVelocity":  maxVelo,
-        }
-
         if isinstance(dynamic, str):
             self.data["dynamicMarking"] = dynamic.strip()
             parsed      = parseDynamicMarking(dynamic)
             dynamic     = list(parsed) if isinstance(parsed, tuple) else parsed
-            dynamicUnit = 'midi'   # markings are always velocity-scale
+            dynamicUnit = 'midi'
 
-        def toDB(val: float) -> float:
-            match dynamicUnit:
-                case 'midi': return scale(val, minVelo, maxVelo, mindB, maxdB, clipToRange=True)
-                case 'dB':   return float(val)
-                case _: raise ValueError(f"Phonon: unknown dynamicUnit '{dynamicUnit}'")
+        match dynamicUnit:
+            case 'midi':
+                toDB  = lambda v: scale(v, _MIN_VEL, _MAX_VEL, _MIN_DB, _MAX_DB, clipToRange=True)
+                toVel = lambda dB: scale(dB, _MIN_DB, _MAX_DB, _MIN_VEL, _MAX_VEL, clipToRange=True)
+                self.data.update(minDb=_MIN_DB, maxDb=_MAX_DB, minVelocity=_MIN_VEL, maxVelocity=_MAX_VEL)
+            case 'dB':
+                toDB  = float
+                toVel = lambda dB: scale(dB, 0.0, 100.0, 0.0, 127.0, clipToRange=True)
+                for k in ("minDb", "maxDb", "minVelocity", "maxVelocity"):
+                    self.data.pop(k, None)
+            case _:
+                raise ValueError(f"Phonon: unknown dynamicUnit '{dynamicUnit}'")
 
+        # breakpoints (timeSec, value in dynamicUnit) and their curves
         if isinstance(dynamic, Envelope):
-            env = dynamic.rescale([0, durationSec])
-            self.envelopes["dynamic"]    = env
-            self.envelopes["aftertouch"] = env
-            # no single dB value — leave dynamicdB out of data
-
+            pts, curves = dynamic._sorted_points_and_curves()
+            pts = [(x * durationSec, dynamic._y_from_norm(y, False)) for x, y in pts]
         elif isinstance(dynamic, (list, tuple)):
-            pts = [(i * durationSec / (len(dynamic) - 1) if len(dynamic) > 1 else 0.0,
-                    toDB(v))
-                   for i, v in enumerate(dynamic)]
-            if len(dynamic) == 1:
-                pts = [(0.0, toDB(dynamic[0])), (durationSec, toDB(dynamic[0]))]
-            env = Envelope(pts).rescale([0, durationSec])
-            self.envelopes["dynamic"]    = env
-            self.envelopes["aftertouch"] = env
-            # note-on velocity reflects the dynamic's starting value,
-            # so a hairpin's attack is actually audible, not just its CC ramp
-            self.data["dynamicdB"] = toDB(float(dynamic[0]))
-            if dynamicUnit == 'midi':
-                self.data.update(calibration)
-
+            if not dynamic:
+                raise ValueError("Phonon: dynamic list is empty")
+            n = len(dynamic)
+            pts = [(i * durationSec / (n - 1) if n > 1 else 0.0, float(v)) for i, v in enumerate(dynamic)]
+            curves = None
         else:
-            # single value → flat, used as velocity only
-            dB = toDB(float(dynamic))
-            self.data["dynamicdB"] = dB
-            if dynamicUnit == 'midi':
-                self.data.update(calibration)
-            self.envelopes["dynamic"] = Envelope(
-                [(0.0, dB), (durationSec, dB)]
-            ).rescale([0, durationSec])
+            pts, curves = [(0.0, float(dynamic))], None
+
+        timeVarying = len(pts) > 1
+        if not timeVarying:
+            pts = [pts[0], (durationSec, pts[0][1])]
+        dBPts = [(t, toDB(v)) for t, v in pts]
+
+        self.data["dynamicdB"] = dBPts[0][1]
+        self.envelopes["dynamic"] = Envelope(dBPts, autosort=False, curves=curves)
+        if timeVarying:
+            self.envelopes["aftertouch"] = Envelope(
+                [(t, toVel(dB)) for t, dB in dBPts], autosort=False, curves=curves)
+        else:
+            self.envelopes.pop("aftertouch", None)
 
     # ------------------------------------------------------------------
     # Pitch selection helpers
@@ -351,26 +254,19 @@ class Phonon(TemporalObject):
 
         Keys: 'all', 'lowest', 'highest', 'mostCommon', 'leastCommon', 'chord'/'allSet'
         """
-        if not self.allPitches:
-            return [0.0]
+        counts = Counter(round(p, 6) for p in self.allPitches)
         match key:
-            case 'all':
-                return list(self.allPitches)
-            case 'chord' | 'allSet':
-                return sorted(set(self.allPitches))
-            case 'lowest':
-                return [min(self.allPitches)]
-            case 'highest':
-                return [max(self.allPitches)]
-            case 'mostCommon':
-                return [Envelope(self.allPitches).most_common_y()]
-            case 'leastCommon':
-                return [Envelope(self.allPitches).least_common_y()]
+            case 'all':             return list(self.allPitches)
+            case 'chord' | 'allSet': return sorted(set(self.allPitches))
+            case 'lowest':          return [min(self.allPitches)]
+            case 'highest':         return [max(self.allPitches)]
+            case 'mostCommon':      return [counts.most_common(1)[0][0]]
+            case 'leastCommon':     return [counts.most_common()[-1][0]]
             case _:
                 raise ValueError(f"Phonon.calculatePitch: unknown key '{key}'")
 
     # ------------------------------------------------------------------
-    # Glissando  (analytical / descriptive only)
+    # Glissando
     # ------------------------------------------------------------------
 
     def glissando(
@@ -382,49 +278,28 @@ class Phonon(TemporalObject):
         """
         Record a glissando from startPitch to endPitch.
 
-        Two things are stored:
-        - self.data["pitchwheel"] = (startSemOffset, endSemOffset)
-          Both are semitone offsets from the anchor note (nearest 12-EDO
-          semitone of startPitch). MidiExporter reads this to emit a moving
-          pitchwheel and correct annotations.
-        - self.envelopes["glissando"] = raw (startMidi, endMidi) as a tuple
-          (not an Envelope) for analytical / score-rendering use.
+        - data["pitchMidi"]     = anchor note (nearest 12-EDO semitone of startPitch)
+        - data["pitchwheel"]    = (startSemOffset, endSemOffset) from the anchor,
+                                  read by MidiExporter for a moving pitchwheel
+        - data["glissandoMidi"] = (startMidi, endMidi) for analysis / scores
         """
         unit      = pitchUnit or self.pitchUnit
         startMidi = self._toMidi(startPitch, unit)
-        endMidi   = self._toMidi(endPitch,   unit)
+        endMidi   = self._toMidi(endPitch, unit)
         anchor    = round(startMidi)
-
-        startSem  = startMidi - anchor
-        endSem    = endMidi   - anchor
-
-        # for MIDI export: semitone offsets as a plain tuple (no Envelope)
-        self.data["pitchwheel"] = (startSem, endSem)
-
-        # set anchor as the MIDI note that will fire on note_on
-        self.data["pitchMidi"]  = float(anchor)
-
-        # for analytical use: raw MIDI values stored directly
-        self.envelopes["glissando"] = (startMidi, endMidi)
+        self.data["pitchMidi"]     = float(anchor)
+        self.data["pitchwheel"]    = (startMidi - anchor, endMidi - anchor)
+        self.data["glissandoMidi"] = (startMidi, endMidi)
 
     # ------------------------------------------------------------------
-    # Dynamic markings
+    # Dynamic markings / lyrics
     # ------------------------------------------------------------------
 
     def setDynamicMarking(self, text: str | None) -> None:
         """
-        Re-set this Phonon's dynamic using a standard marking ('pp',
-        'mf', ...) or a hairpin ('pp-mp', 'ff>mp'), overwriting whatever
-        dynamic this Phonon currently has.
-
-        A plain marking becomes a flat velocity. A hairpin becomes a
-        crescendo/diminuendo Envelope spanning the Phonon's full
-        duration, exported as a channel-aftertouch ramp, while the
-        note-on velocity itself is set from the hairpin's starting value.
-
-        Pass None to clear the stored marking label — this does not
-        reset the underlying velocity/envelope, it just removes the
-        text bookkeeping in data["dynamicMarking"].
+        Re-set the dynamic from a marking ('pp', 'mf', ...) or a hairpin
+        ('pp-mp', 'ff>mp'). None only clears the stored label, not the
+        velocity / envelope.
         """
         if text is None:
             self.data.pop("dynamicMarking", None)
@@ -432,33 +307,12 @@ class Phonon(TemporalObject):
         self._parseDynamic(text, dynamicUnit='midi', durationSec=self.durationSec)
 
     def getDynamicMarking(self) -> str | None:
-        """Return the raw dynamic-marking text last set on this Phonon, if any."""
         return self.data.get("dynamicMarking")
-
-    # ------------------------------------------------------------------
-    # Lyrics
-    # ------------------------------------------------------------------
 
     def setLyric(self, text: str | None, offsetSec: float = 0.0) -> None:
         """
-        Attach a lyric syllable to this Phonon.
-
-        The lyric is carried through unfold() onto the first note-leaf
-        this Phonon resolves to — the note's onset, which is also where
-        a syllable is conventionally notated under a melisma (when a
-        Phonon unfolds into several sequential notes via noteSelectKey
-        'seq' / 'chordSeq'). MidiExporter then emits it as a MIDI
-        'lyrics' meta-event, via the same leaf.annotations mechanism
-        used for other time-stamped text.
-
-        Parameters
-        ----------
-        text : str | None
-            The lyric syllable / word. Pass None to clear a previously
-            set lyric.
-        offsetSec : float
-            Offset in seconds from the resolved leaf's own start time
-            (default 0.0 — exactly at the note onset).
+        Attach a lyric syllable; unfold() puts it on the first resolved note
+        (offsetSec from that note's start). None clears it.
         """
         if text is None:
             self.data.pop("lyric", None)
@@ -468,207 +322,87 @@ class Phonon(TemporalObject):
         self.data["lyricOffsetSec"] = float(offsetSec)
 
     def getLyric(self) -> str | None:
-        """Return this Phonon's lyric text, or None if unset."""
         return self.data.get("lyric")
 
-    def _attachLyric(self, newChildren: list) -> None:
-        """Append this Phonon's lyric (if any) onto the first resolved leaf."""
-        lyric = self.data.get("lyric")
-        if lyric is None or not newChildren:
-            return
-        offsetSec = float(self.data.get("lyricOffsetSec", 0.0))
-        newChildren[0].annotations.append((offsetSec, lyric))
+    # ------------------------------------------------------------------
+    # Quantisation
+    # ------------------------------------------------------------------
 
-    def _attachEnvelopes(self, newChildren: list) -> None:
+    def quantiseTime(self, grid, parentalStartSec: float = 0.0) -> None:
         """
-        Propagate this Phonon's own envelopes (dynamic/aftertouch and any
-        generic CC envelope — anything except pitchwheel/glissando, which
-        travel via data["pitchwheel"] instead) onto every newly unfolded
-        leaf that spans the Phonon's full duration.
-
-        This covers the glissando guard and the 'chord'/'lowest'/'highest'/
-        'mostCommon'/'leastCommon'/'all'/'allSet' selections, where each
-        leaf starts at 0 and runs the full durationSec — including a
-        multi-voice chord, where every simultaneous voice should swell
-        together. Leaves produced by 'seq'/'chordSeq', which each cover
-        only a fraction of the duration, are skipped: slicing a
-        continuous envelope across sequential sub-notes isn't implemented.
-
-        "dynamic" is excluded: it mirrors "aftertouch" (set together by
-        _parseDynamic) but isn't a MIDI CC name, so MidiExporter would
-        error trying to look it up. "aftertouch" alone carries the same
-        envelope through to export.
+        Snap this note's absolute start and end to *grid* as one event.
+        Leaves from an earlier unfold() are dropped (export unfolds again),
+        so the quantised times are not lost on the next export.
         """
-        if not newChildren:
-            return
-        passthroughKeys = [
-            k for k in self.envelopes if k not in ("pitchwheel", "glissando", "dynamic")
-        ]
-        if not passthroughKeys:
-            return
-        for child in newChildren:
-            if abs(child.startTimeSec) < 1e-9 and abs(child.durationSec - self.durationSec) < 1e-9:
-                for key in passthroughKeys:
-                    child.envelopes[key] = self.envelopes[key]
-
-    def _attachDynamicCalibration(self, newChildren: list) -> None:
-        """
-        Copy the dB<->velocity calibration written by _parseDynamic onto
-        the unfolded leaves, so MidiExporter turns dynamicdB back into
-        the exact velocity the Phonon was given.
-        """
-        cal = {
-            k: self.data[k]
-            for k in ("minDb", "maxDb", "minVelocity", "maxVelocity")
-            if k in self.data
-        }
-        if not cal:
-            return
-        for child in newChildren:
-            child.data.update(cal)
-
-    def _attachDynamicMarking(self, newChildren: list) -> None:
-        """
-        Propagate this Phonon's dynamic-marking text (if any) onto every
-        newly unfolded leaf that spans the Phonon's full duration — the
-        same leaves _attachEnvelopes() targets. MusicXmlExporter reads
-        data["dynamicMarking"] to draw a literal dynamic mark and/or a
-        crescendo/diminuendo wedge; MIDI export is unaffected by this
-        (it already gets the actual velocity/aftertouch via _parseDynamic).
-        """
-        marking = self.data.get("dynamicMarking")
-        if marking is None or not newChildren:
-            return
-        for child in newChildren:
-            if abs(child.startTimeSec) < 1e-9 and abs(child.durationSec - self.durationSec) < 1e-9:
-                child.data["dynamicMarking"] = marking
+        self.children = [c for c in self.children if isinstance(c, Phonon)]
+        for c in self.children:
+            c.quantiseTime(grid, parentalStartSec + self.startTimeSec)
+        start = float(grid.quantise(parentalStartSec + self.startTimeSec))
+        end   = float(grid.quantise(parentalStartSec + self.endTimeSec))
+        self.startTimeSec = start - parentalStartSec
+        self.setDuration(max(end, start) - start)
+        self._updateBeats()
 
     # ------------------------------------------------------------------
     # Unfold: resolve pitch + dynamic into TemporalObject children
     # ------------------------------------------------------------------
 
-    def unfold(self, noteSelectKey: str = 'lowest') -> None:
-        """
-        Resolve this Phonon's pitch and dynamic description into
-        TemporalObject children, ready for export.
+    def _leaf(self, startSec: float, durSec: float, pitchMidi: float, pitchwheel=None) -> TemporalObject:
+        anchor = round(pitchMidi)
+        diff   = pitchMidi - anchor
+        return TemporalObject(startSec, durSec, data={
+            "pitchMidi":    float(anchor),
+            "pitchwheel":   pitchwheel if pitchwheel is not None else (diff, diff),
+            "dynamicdB":    float(self.data.get("dynamicdB", 80.0)),
+            "bpm":          float(self.data.get("bpm", 60.0)),
+            "ticksPerBeat": int(self.data.get("ticksPerBeat", 480)),
+        })
 
-        Any existing children that are themselves Phonons are unfolded
-        recursively first. Non-Phonon children are left untouched.
-
-        Parameters
-        ----------
-        noteSelectKey : str
-            How to select pitches from allPitches for non-envelope modes.
-            Used only when chordOrSeq is 'seq' or 'chord'.
-            One of: 'all', 'lowest', 'highest', 'mostCommon', 'leastCommon',
-            'chord'/'allSet', 'seq', 'chordSeq'.
+    def unfold(self, noteSelectKey: str | None = None) -> None:
         """
-        # recurse into any Phonon children first
+        Resolve pitch and dynamic into TemporalObject children, ready for export.
+
+        Phonon children are unfolded recursively first; earlier leaves are replaced.
+
+        noteSelectKey
+            None (default) — follows chordOrSeq: 'seq', 'chord' or 'chordSeq'
+            'seq'          — one note per slot, lowest (first) voice only
+            'chordSeq'     — every pitch of every slot, slots in time
+            'chord' / 'allSet' / 'all' / 'lowest' / 'highest' /
+            'mostCommon' / 'leastCommon' — calculatePitch(key), held for
+                             the full duration
+        """
+        key = noteSelectKey or _DEFAULT_SELECT.get(self.chordOrSeq, 'seq')
         for child in self.children:
             if isinstance(child, Phonon):
                 child.unfold(noteSelectKey)
 
-        bpm          = float(self.data.get("bpm", 60.0))
-        ticksPerBeat = int(self.data.get("ticksPerBeat", 480))
-        dynamicdB    = float(self.data.get("dynamicdB", 80.0))
+        dur     = self.durationSec
+        slotDur = dur / len(self.chordSlots)
+        if "glissandoMidi" in self.data:
+            leaves = [self._leaf(0.0, dur, self.data["pitchMidi"], tuple(self.data["pitchwheel"]))]
+        elif key == 'seq':
+            leaves = [self._leaf(i * slotDur, slotDur, c[0]) for i, c in enumerate(self.chordSlots) if c]
+        elif key == 'chordSeq':
+            leaves = [self._leaf(i * slotDur, slotDur, p) for i, c in enumerate(self.chordSlots) for p in c]
+        else:
+            leaves = [self._leaf(0.0, dur, p) for p in self.calculatePitch(key)]
 
-        newChildren: list[TemporalObject] = []
+        # lyric on the first note
+        if leaves and "lyric" in self.data:
+            leaves[0].annotations.append((float(self.data.get("lyricOffsetSec", 0.0)), self.data["lyric"]))
+        cal = {k: self.data[k] for k in ("minDb", "maxDb", "minVelocity", "maxVelocity") if k in self.data}
+        passthrough = {k: v for k, v in self.envelopes.items() if k not in ("pitchwheel", "dynamic")}
+        for leaf in leaves:
+            leaf.data.update(cal)
+            # full-duration notes carry the CC / aftertouch envelopes and the
+            # marking; slicing an envelope across sub-notes isn't implemented
+            if abs(leaf.startTimeSec) < 1e-9 and abs(leaf.durationSec - dur) < 1e-9:
+                leaf.envelopes.update(passthrough)
+                if "dynamicMarking" in self.data:
+                    leaf.data["dynamicMarking"] = self.data["dynamicMarking"]
 
-        # --- glissando guard ---
-        # If glissando() was called, self.data already has the correct
-        # pitchMidi (anchor) and pitchwheel (startSem, endSem).
-        # Create a single leaf that inherits this directly — do not
-        # recompute pitch from allPitches.
-        if "pitchwheel" in self.data and "glissando" in self.envelopes:
-            newChildren.append(TemporalObject(
-                0.0, self.durationSec,
-                data={
-                    "pitchMidi":    self.data["pitchMidi"],
-                    "pitchwheel":   self.data["pitchwheel"],
-                    "dynamicdB":    dynamicdB,
-                    "bpm":          bpm,
-                    "ticksPerBeat": ticksPerBeat,
-                },
-            ))
-            self._attachLyric(newChildren)
-            self._attachEnvelopes(newChildren)
-            self._attachDynamicCalibration(newChildren)
-            self._attachDynamicMarking(newChildren)
-            self.children = (
-                [c for c in self.children if isinstance(c, Phonon)]
-                + newChildren
-            )
-            self._refresh()
-            return
-
-        match noteSelectKey:
-
-            case 'seq':
-                env      = self.pitchEnvelopes[0]
-                nPitches = len(env.points)
-                slotDur  = self.durationSec / nPitches
-                for i, (xNorm, _) in enumerate(env.points):
-                    pitchMidi = env.getValue(xNorm, normalizedX=True)
-                    anchor    = round(pitchMidi)
-                    diff      = pitchMidi - anchor
-                    start     = i * slotDur
-                    newChildren.append(TemporalObject(
-                        start, slotDur,
-                        data={
-                            "pitchMidi":    float(anchor),
-                            "pitchwheel":   (diff, diff),
-                            "dynamicdB":    dynamicdB,
-                            "bpm":          bpm,
-                            "ticksPerBeat": ticksPerBeat,
-                        },
-                    ))
-
-            case 'chordSeq':
-                nSlots  = len(self.pitchEnvelopes[0].points) if self.pitchEnvelopes else 0
-                slotDur = self.durationSec / nSlots if nSlots else self.durationSec
-                for voice, env in enumerate(self.pitchEnvelopes):
-                    for i, (xNorm, _) in enumerate(env.points):
-                        pitchMidi = env.getValue(xNorm, normalizedX=True)
-                        anchor    = round(pitchMidi)
-                        diff      = pitchMidi - anchor
-                        start     = i * slotDur
-                        newChildren.append(TemporalObject(
-                            start, slotDur,
-                            data={
-                                "pitchMidi":    float(anchor),
-                                "pitchwheel":   (diff, diff),
-                                "dynamicdB":    dynamicdB,
-                                "bpm":          bpm,
-                                "ticksPerBeat": ticksPerBeat,
-                            },
-                        ))
-
-            case _:
-                # chord / lowest / highest / mostCommon / leastCommon / all
-                for pitchMidi in self.calculatePitch(noteSelectKey):
-                    anchor = round(pitchMidi)
-                    diff   = pitchMidi - anchor
-                    newChildren.append(TemporalObject(
-                        0.0, self.durationSec,
-                        data={
-                            "pitchMidi":    float(anchor),
-                            "pitchwheel":   (diff, diff),
-                            "dynamicdB":    dynamicdB,
-                            "bpm":          bpm,
-                            "ticksPerBeat": ticksPerBeat,
-                        },
-                    ))
-
-        self._attachLyric(newChildren)
-        self._attachEnvelopes(newChildren)
-        self._attachDynamicCalibration(newChildren)
-        self._attachDynamicMarking(newChildren)
-
-        # replace only the non-Phonon children (Phonons were already unfolded)
-        self.children = (
-            [c for c in self.children if isinstance(c, Phonon)]
-            + newChildren
-        )
+        self.children = [c for c in self.children if isinstance(c, Phonon)] + leaves
         self._refresh()
 
     # ------------------------------------------------------------------
@@ -679,7 +413,7 @@ class Phonon(TemporalObject):
         self,
         path: str = "/tmp/out.mid",
         *,
-        noteSelectKey: str = 'lowest',
+        noteSelectKey: str | None = None,
         trackName: str = "track",
         parseEnvelopes: bool = True,
         perNoteTracks: bool = False,
@@ -699,61 +433,39 @@ class Phonon(TemporalObject):
             channel=channel,
         ))
 
-    def toXml(
-        self,
-        path: str = "/tmp/out.xml",
-        *,
-        noteSelectKey: str = 'lowest',
-        title: str = "GreasyPidgin Score",
-        timeSignature: str = "4/4",
-    ) -> None:
+    def toXml(self, path: str = "/tmp/out.xml", *, noteSelectKey: str | None = None,
+              title: str = "GreasyPidgin Score", timeSignature: str = "4/4") -> None:
         """Unfold pitches then export to MusicXML."""
         self.unfold(noteSelectKey)
         self.export(MusicXmlExporter(path, title=title, timeSignature=timeSignature))
 
-    def toCsv(
-        self,
-        path: str = "/tmp/out.csv",
-        *,
-        noteSelectKey: str = 'lowest',
-    ) -> None:
+    def toCsv(self, path: str = "/tmp/out.csv", *, noteSelectKey: str | None = None) -> None:
         """Unfold pitches then export to CSV."""
         self.unfold(noteSelectKey)
         self.export(CsvExporter(path))
 
-    def toJson(
-        self,
-        path: str = "/tmp/out.json",
-        *,
-        noteSelectKey: str = 'lowest',
-    ) -> None:
+    def toJson(self, path: str = "/tmp/out.json", *, noteSelectKey: str | None = None) -> None:
         """Unfold pitches then export to JSON."""
         self.unfold(noteSelectKey)
         self.export(JsonExporter(path))
 
-    # ------------------------------------------------------------------
-    # Legacy
-    # ------------------------------------------------------------------
-
     def parseMidi(self, folder="/tmp/", trackname="auto", perNoteTracks=True, noteSelectKey='lowest') -> None:
         """Legacy alias for toMidi(). Use toMidi() in new code."""
         name = noteSelectKey if trackname == 'auto' else trackname
-        self.toMidi(folder + noteSelectKey + ".mid", noteSelectKey=noteSelectKey, trackName=name, perNoteTracks=perNoteTracks)
+        self.toMidi(folder + noteSelectKey + ".mid", noteSelectKey=noteSelectKey,
+                    trackName=name, perNoteTracks=perNoteTracks)
 
     # ------------------------------------------------------------------
     # Repr
     # ------------------------------------------------------------------
 
     def __repr__(self) -> str:
-        bpm = self.data.get("bpm", "?")
         return (
             f"Phonon(\n"
             f"   id           : {self.id}\n"
-            f"   start        : {self.startTimeSec:.3f}s  "
-            f"({self.startTimeBeats:.3f} beats)\n"
-            f"   duration     : {self.durationSec:.3f}s  "
-            f"({self.durationBeats:.3f} beats)\n"
-            f"   bpm          : {bpm}\n"
+            f"   start        : {self.startTimeSec:.3f}s  ({self.startTimeBeats:.3f} beats)\n"
+            f"   duration     : {self.durationSec:.3f}s  ({self.durationBeats:.3f} beats)\n"
+            f"   bpm          : {self.data.get('bpm', '?')}\n"
             f"   dynamicMark  : {self.data.get('dynamicMarking')!r}\n"
             f"   lyric        : {self.data.get('lyric')!r}\n"
             f"   chordOrSeq   : {self.chordOrSeq}\n"

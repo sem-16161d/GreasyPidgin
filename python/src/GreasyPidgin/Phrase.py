@@ -210,7 +210,7 @@ class Phrase(TemporalObject):
         self,
         path: str = "/tmp/phrase.mid",
         *,
-        noteSelectKey: str = 'lowest',
+        noteSelectKey: str | None = None,
         trackName: str = "phrase",
         parseEnvelopes: bool = True,
         perNoteTracks: bool = False,
@@ -234,7 +234,7 @@ class Phrase(TemporalObject):
         self,
         path: str = "/tmp/phrase.xml",
         *,
-        noteSelectKey: str = 'lowest',
+        noteSelectKey: str | None = None,
         title: str = "GreasyPidgin Score",
         timeSignature: str = "4/4",
     ) -> None:
@@ -246,7 +246,7 @@ class Phrase(TemporalObject):
         self,
         path: str = "/tmp/phrase.csv",
         *,
-        noteSelectKey: str = 'lowest',
+        noteSelectKey: str | None = None,
     ) -> None:
         """Unfold all children then export to CSV."""
         self._unfoldAll(noteSelectKey)
@@ -256,7 +256,7 @@ class Phrase(TemporalObject):
         self,
         path: str = "/tmp/phrase.json",
         *,
-        noteSelectKey: str = 'lowest',
+        noteSelectKey: str | None = None,
     ) -> None:
         """Unfold all children then export to JSON."""
         self._unfoldAll(noteSelectKey)

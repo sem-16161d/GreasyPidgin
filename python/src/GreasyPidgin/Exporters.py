@@ -211,9 +211,10 @@ class MidiExporter(Exporter):
         nTracks = max(lf.midiTrackIndex for lf in leaves) + 1
 
         tracks: list[list[tuple[float, object]]] = [[] for _ in range(nTracks)]
+        # times are seconds; the file has one tempo (the root's), so every
+        # leaf converts seconds -> beats with that tempo
         for leaf in leaves:
-            leafBpm = float(leaf.data.get("bpm") or getattr(leaf, "bpm", bpm))
-            tracks[leaf.midiTrackIndex].extend(self._leafMessages(leaf, leafBpm))
+            tracks[leaf.midiTrackIndex].extend(self._leafMessages(leaf, bpm))
 
         midiFile = MidiFile(ticks_per_beat=ticksPerBeat)
         for i, absEvents in enumerate(tracks):
@@ -366,7 +367,7 @@ class MidiExporter(Exporter):
             ]
 
         # glissando — interpolate at pitchwheelResolution steps per second
-        durationSec = (endB - startB) * 60.0 / max(leaf.data.get("bpm") or getattr(leaf, "bpm", 60.0), 1e-6)
+        durationSec = leaf.durationSec
         nSteps      = max(2, int(durationSec * self.pitchwheelResolution))
         msgs        = []
         for i in range(nSteps):
@@ -736,9 +737,8 @@ class MusicXmlExporter(Exporter):
         leafBeats: list[tuple[object, float, float]] = []
         lastMeasureIndex = 0
         for leaf in leaves:
-            leafBpm       = float(leaf.data.get("bpm") or getattr(leaf, "bpm", bpm))
-            durationBeats = leaf.durationSec * leafBpm / 60.0
-            offsetBeats   = leaf.startTimeSec * leafBpm / 60.0
+            durationBeats = leaf.durationSec * bpm / 60.0
+            offsetBeats   = leaf.startTimeSec * bpm / 60.0
             leafBeats.append((leaf, offsetBeats, durationBeats))
             lastMeasureIndex = max(
                 # a note ending exactly on a barline does not start another bar

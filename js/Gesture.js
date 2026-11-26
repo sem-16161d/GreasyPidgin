@@ -1,0 +1,134 @@
+/*
+Gesture.js — JavaScript port of GreasyPidgin/Gesture.py
+
+A Gesture is a TemporalObject whose children are Phonons (or other
+Gestures), with times relative to the Gesture's start.
+
+Runs in Max 9 [v8] and in Node.
+
+    Max:   var Gesture = require("Gesture").Gesture;
+    Node:  const { Gesture } = require("./Gesture");
+
+    const g = Gesture.fromLists(8, { startDeltas: [0.5, 0.25], pitches: [60, 62, [64, 67]], dynamics: ["p", "mf-ff"] });
+    g.toEvents();   // [{ startSec, durationSec, pitch, bend, velocity, ... }, ...]
+
+Differences from the Python version
+-----------------------------------
+- fromLists(size, options) takes every other parameter as an option.
+- quantiseTime(grid, parentalStartSec = 0, durationThresholdSec = 0.001).
+- No fromMidiFile() and no file exporters; toEvents() gives the playable notes.
+*/
+
+const load = name => { try { return require("./" + name); } catch (e) { return require(name); } };
+const { TemporalObject } = load("TemporalObject");
+const { Envelope } = load("Envelope");
+const { Phonon, noteEvents } = load("Phonon");
+
+const asList = v => (Array.isArray(v) ? v : [v]);
+
+class Gesture extends TemporalObject {
+
+    constructor(startTimeSec = 0, phonons = null, durationSec = 0, { bpm = 60, ticksPerBeat = 480 } = {}) {
+        super(startTimeSec, durationSec, null, { data: { bpm, ticksPerBeat } });
+        for (const p of phonons || []) {
+            if (!(p instanceof Phonon || p instanceof Gesture)) {
+                throw new TypeError(`Gesture: expected Phonon or Gesture, got ${p?.constructor?.name ?? typeof p}`);
+            }
+            // propagate tempo to children that haven't set their own
+            p.data.bpm ??= bpm;
+            p.data.ticksPerBeat ??= ticksPerBeat;
+            this.children.push(p);
+        }
+        if (this.children.length && Number(durationSec) === 0) this._refresh();
+    }
+
+    /** Unfold every Phonon in the tree (see Phonon.unfold). */
+    _unfoldAll(noteSelectKey = null) {
+        for (const c of this.children) {
+            if (c instanceof Gesture) c._unfoldAll(noteSelectKey);
+            else if (c instanceof Phonon) c.unfold(noteSelectKey);
+        }
+    }
+
+    _phonons() {
+        return this.children.filter(c => c instanceof Phonon);
+    }
+
+    /** One marking per direct Phonon child, in order ('pp', 'mf', 'pp-mp', ...). */
+    setDynamicMarkings(markings) {
+        this._phonons().forEach((p, i) => { if (i < markings.length) p.setDynamicMarking(markings[i]); });
+    }
+
+    getDynamicMarkings() {
+        return this._phonons().map(p => p.getDynamicMarking());
+    }
+
+    /** One lyric per direct Phonon child, in order. */
+    setLyrics(lyrics, { offsetSec = 0 } = {}) {
+        this._phonons().forEach((p, i) => { if (i < lyrics.length) p.setLyric(lyrics[i], offsetSec); });
+    }
+
+    getLyrics() {
+        return this._phonons().map(p => p.getLyric());
+    }
+
+    /** Quantise all note times (absolute) to `grid`, then drop children shorter
+        than durationThresholdSec. */
+    quantiseTime(grid, parentalStartSec = 0, durationThresholdSec = 0.001) {
+        super.quantiseTime(grid, parentalStartSec);
+        this.children = this.children.filter(c => c.durationSec > durationThresholdSec);
+        this._refresh();
+    }
+
+    /** Unfold all Phonons, then the playable notes (see noteEvents()). */
+    toEvents(noteSelectKey = null) {
+        this._unfoldAll(noteSelectKey);
+        return noteEvents(this);
+    }
+
+    /**
+     * Build a Gesture from parallel lists, each cycled modulo its length:
+     *   startDeltas : inter-onset times (default 0.5)
+     *   durations   : note lengths (default 1)
+     *   pitches     : per note a pitch or a list (chord / sequence) (default [0])
+     *   dynamics    : per note a number, a marking ('mf', 'pp-f') or an Envelope (default 64)
+     * plus startOffset and the Phonon options timeUnit, pitchUnit, dynamicUnit,
+     * chordOrSeq ('chord' by default), autoSortChords, bpm, ticksPerBeat, referenceA.
+     */
+    static fromLists(size = 0, {
+        startOffset = 0, startDeltas = 0.5, durations = 1, pitches = [0], dynamics = 64,
+        timeUnit = "seconds", pitchUnit = "midi", dynamicUnit = "midi", chordOrSeq = "chord",
+        autoSortChords = true, bpm = 60, ticksPerBeat = 480, referenceA = 440,
+    } = {}) {
+        if (!Number.isInteger(size) || size < 0) throw new RangeError(`Gesture.fromLists: size must be a non-negative int, got ${size}`);
+        const lists = { startDeltas: asList(startDeltas), durations: asList(durations),
+                        pitches: asList(pitches), dynamics: asList(dynamics) };
+        if (size > 0) {
+            for (const [name, values] of Object.entries(lists)) {
+                if (!values.length) throw new Error(`Gesture.fromLists: ${name} must not be empty when size > 0`);
+            }
+        }
+        const at = (name, i) => lists[name][i % lists[name].length];
+        const startSec = timeUnit === "beats" || timeUnit === "b" ? startOffset * 60 / bpm : Number(startOffset);
+
+        // Phonon times are relative to the Gesture, which already starts at startSec
+        const phonons = [];
+        let start = 0;
+        for (let i = 0; i < size; i++) {
+            if (i > 0) start += Number(at("startDeltas", i));
+            const d = at("dynamics", i);
+            phonons.push(new Phonon(start, at("durations", i), asList(at("pitches", i)),
+                typeof d === "string" || d instanceof Envelope || Array.isArray(d) ? d : Number(d), bpm,
+                { timeUnit, pitchUnit, dynamicUnit, chordOrSeq, autoSortChords, ticksPerBeat, referenceA }));
+        }
+        return new Gesture(startSec, phonons, 0, { bpm, ticksPerBeat });
+    }
+
+    toString() {
+        const f = x => x.toFixed(3);
+        return `Gesture(id=${this.id}, start=${f(this.startTimeSec)}s, dur=${f(this.durationSec)}s, ` +
+               `end=${f(this.endTimeSec)}s, bpm=${this.data.bpm}, children=${this.children.length})`;
+    }
+}
+
+if (typeof exports !== "undefined") exports.Gesture = Gesture;
