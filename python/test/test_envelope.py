@@ -1,3 +1,4 @@
+import pytest
 import numpy as np
 
 from GreasyPidgin.Envelope import Envelope
@@ -37,3 +38,24 @@ def test_stats_match_curve_on_flat_range():
 
 def test_with_bounds_keeps_x_range():
     assert Envelope([7]).withBounds(0, 10).x_range == (0, 0)
+
+
+def test_reverse_is_retrograde_and_keeps_curve_shapes():
+    row = Envelope([60, 62, 61, 65, 64])
+    assert [row.reverse().getValue(x, True, False) for x in (0, 0.25, 0.5, 0.75, 1)] == [64, 65, 61, 62, 60]
+    e = Envelope([[0, 60], [1, 72], [3, 55], [4, 67]], curves=["exp", "easeIn", 2.5])
+    r = e.reverse()
+    assert r.getCurves() == [-2.5, "easeOut", "log"]
+    assert all(abs(e.getValue(x, False, False) - r.getValue(4 - x, False, False)) < 1e-9 for x in (0, 0.3, 1.7, 2.2, 3.9))
+    assert e.getValue(1.5, False, False) == e.reverse().reverse().getValue(1.5, False, False)
+
+
+def test_inverse_mirrors_around_first_value_center_or_number():
+    row = Envelope([60, 62, 61, 65, 64])
+    xs = (0, 0.25, 0.5, 0.75, 1)
+    assert [row.inverse().getValue(x, True, False) for x in xs] == [60, 58, 59, 55, 56]
+    assert [row.inverse("center").getValue(x, True, False) for x in xs] == [65, 63, 64, 60, 61]
+    assert [row.inverse(0).getValue(x, True, False) for x in xs] == [-60, -62, -61, -65, -64]
+    assert row.inverse(overwriteOriginal=True) is row and row.getValue(1, True, False) == 56
+    with pytest.raises(ValueError):
+        row.inverse("up")

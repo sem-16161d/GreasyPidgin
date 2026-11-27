@@ -469,6 +469,47 @@ class Envelope {
     }
 
     /** Copy with the given per-segment curves (see setCurves()). */
+    /**
+     * Retrograde: the envelope played backwards in time (x mirrored).
+     * Same x_range and y_range. Curves are mirrored (easeIn <-> easeOut, exp <-> log,
+     * a number c -> -c) so every segment keeps its shape.
+     * 'step' stays 'step': a step row [a, b, c, d] becomes [d, c, b, a].
+     */
+    reverse({ overwriteOriginal = false } = {}) {
+        if (!this.points.length) throw new Error("Envelope.reverse: empty envelope");
+        const MIRROR = { easeIn: "easeOut", easeOut: "easeIn", exp: "log", log: "exp" };
+        const [pts, curves] = this._sorted_points_and_curves();
+        const out = this.rescale();
+        out.points = pts.slice().reverse().map(([x, y]) => [1 - x, y]);
+        out.curves = curves.slice().reverse().map(c => (typeof c === "number" ? -c : MIRROR[c] ?? c));
+        return this._finish_modification(out, overwriteOriginal);
+    }
+
+    /**
+     * Inversion: every y mirrored around `axis` (y' = 2 * axis - y).
+     * axis : null     -> the first breakpoint's value (serial row inversion:
+     *                    the row keeps its first note, every interval flips)
+     *        "center" -> the middle of the y range (the range stays the same)
+     *        a number -> mirror around that value (in y units)
+     * Curves stay as they are: a vertical mirror keeps each segment's shape.
+     */
+    inverse(axis = null, { overwriteOriginal = false } = {}) {
+        if (!this.points.length) throw new Error("Envelope.inverse: empty envelope");
+        const [yMin, yMax] = this.y_range;
+        if (axis === null || axis === undefined) {
+            axis = this._y_from_norm(this._sorted_points_and_curves()[0][0][1], false);
+        } else if (typeof axis === "string" && ["center", "centre"].includes(axis.toLowerCase())) {
+            axis = (yMin + yMax) / 2;
+        } else if (isNumber(axis)) {
+            axis = Number(axis);
+        } else {
+            throw new Error(`Envelope.inverse: axis must be null, "center" or a number, got ${axis}`);
+        }
+        const out = this.rescale(null, [2 * axis - yMax, 2 * axis - yMin]);
+        out.points = this.points.map(([x, y]) => [x, 1 - y]);
+        return this._finish_modification(out, overwriteOriginal);
+    }
+
     withCurves(curves, { overwriteOriginal = false } = {}) {
         const out = this.rescale();
         out.setCurves(curves);

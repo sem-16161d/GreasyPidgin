@@ -601,6 +601,47 @@ class Envelope:
         out.setCurves(curves)
         return self._finish_modification(out, overwriteOriginal)
 
+    # Curves seen backwards: the same shape traversed right to left
+    _MIRRORED_CURVES = {"easeIn": "easeOut", "easeOut": "easeIn", "exp": "log", "log": "exp"}
+
+    def reverse(self, overwriteOriginal: bool = False):
+        """Retrograde: the envelope played backwards in time (x mirrored).
+
+        Same x_range and y_range. Curves are mirrored (easeIn <-> easeOut,
+        exp <-> log, a number c -> -c) so every segment keeps its shape.
+        'step' stays 'step': a step row [a, b, c, d] becomes [d, c, b, a]."""
+        if not self.points:
+            raise ValueError("Envelope.reverse: empty envelope")
+        pts, curves = self._sorted_points_and_curves()
+        out = self.rescale()
+        out.points = [(1.0 - x, y) for x, y in reversed(pts)]
+        out.curves = [self._MIRRORED_CURVES.get(c, c) if isinstance(c, str) else -c
+                      for c in reversed(curves)]
+        return self._finish_modification(out, overwriteOriginal)
+
+    def inverse(self, axis=None, overwriteOriginal: bool = False):
+        """Inversion: every y mirrored around `axis` (y' = 2 * axis - y).
+
+        axis : None   -> the first breakpoint's value (serial row inversion:
+                         the row keeps its first note, every interval flips)
+               'center' -> the middle of the y range (the range stays the same)
+               a number -> mirror around that value (in y units)
+        Curves stay as they are: a vertical mirror keeps each segment's shape."""
+        if not self.points:
+            raise ValueError("Envelope.inverse: empty envelope")
+        y_min, y_max = self.y_range
+        if axis is None:
+            axis = self._y_from_norm(self._sorted_points()[0][1], False)
+        elif isinstance(axis, str) and axis.lower() in ("center", "centre"):
+            axis = (y_min + y_max) / 2.0
+        elif isinstance(axis, (int, float, np.integer, np.floating)) and not isinstance(axis, bool):
+            axis = float(axis)
+        else:
+            raise ValueError(f"Envelope.inverse: axis must be None, 'center' or a number, got {axis!r}")
+        out = self.rescale(new_y_range=(2.0 * axis - y_max, 2.0 * axis - y_min))
+        out.points = [(x, 1.0 - y) for x, y in self.points]
+        return self._finish_modification(out, overwriteOriginal)
+
     def withJitter(self, jitter, mode: str = "value", clip: bool = True,
                    normalizedX: bool = True, seed=None,
                    overwriteOriginal: bool = False):
