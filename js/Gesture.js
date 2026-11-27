@@ -20,7 +20,7 @@ Differences from the Python version
 - fromLists(size, options) takes every other parameter as an option.
 - quantiseTime(grid, parentalStartSec = 0, durationThresholdSec = 0.001).
 - No fromMidiFile() and no file exporters; toEvents() gives the playable notes.
-- fromRhythm(rhythm, options) is JS-only: note values instead of start deltas.
+- fromRhythm(rhythm, options): pitches and dynamics are options here, positional in Python.
 */
 
 // Max finds modules by name on its search path and returns an empty object (no error) when it

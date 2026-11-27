@@ -95,3 +95,19 @@ def test_nested_gesture_quantise_uses_absolute_time():
     outer = Gesture(10, [Gesture(2, [Phonon(0.3, 1, 60)])])
     outer.quantiseTime(TimeGrid.series(0, 0.5, 40))
     assert [leaf.startTimeSec for leaf in outer.flatten()] == [12.5]
+
+
+def test_from_rhythm_note_values_rests_and_cycling(tmp_path):
+    g = Gesture.fromRhythm([1, 0.5, 0.5, -1, 1], pitches=[60, 62, 64], dynamics=["p", "f"], bpm=120)
+    assert g.durationSec == pytest.approx(2.0)
+    g.toMidi(str(tmp_path / "r.mid"))
+    assert [(t, n) for t, n, _ in onsets(tmp_path / "r.mid")] == [(0.0, 60), (0.5, 62), (0.75, 64), (1.5, 60)]
+    assert [v for _, _, v in onsets(tmp_path / "r.mid")] == [49, 96, 49, 96]
+
+
+def test_from_rhythm_repeats_legato_trailing_rest():
+    g = Gesture.fromRhythm([0.5, -0.5], [60, [64, 67]], repeats=2, legato=0.5, startOffset=2)
+    assert g.startTimeSec == 2 and g.durationSec == pytest.approx(2.0)
+    assert [(c.startTimeSec, c.durationSec) for c in g.children] == [(0, 0.25), (1.0, 0.25)]
+    with pytest.raises(ValueError):
+        Gesture.fromRhythm([1, 0])

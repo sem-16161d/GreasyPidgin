@@ -25,7 +25,7 @@
    60,
    60,
    1000,
-   1030
+   1016
   ],
   "boxes": [
    {
@@ -38,7 +38,7 @@
       900,
       31.0
      ],
-     "text": "Step 5 - Gesture: a melody from lists",
+     "text": "Step 5 - Gesture: a melody from a rhythm",
      "numinlets": 1,
      "numoutlets": 0,
      "fontsize": 18
@@ -54,7 +54,7 @@
       900,
       22.0
      ],
-     "text": "Gesture.fromLists cycles every list: 3 rhythm values against 5 pitches make a pattern that shifts against itself.",
+     "text": "Gesture.fromRhythm plays note values one after another (beats, negative = rest). Pitches and dynamics cycle over the sounding notes.",
      "numinlets": 1,
      "numoutlets": 0
     }
@@ -165,6 +165,60 @@
      "patching_rect": [
       72,
       158,
+      154,
+      22
+     ],
+     "text": "beats 1 0.5 0.5 -1 1",
+     "numinlets": 2,
+     "numoutlets": 1,
+     "outlettype": [
+      ""
+     ]
+    }
+   },
+   {
+    "box": {
+     "id": "obj-10",
+     "maxclass": "message",
+     "patching_rect": [
+      236,
+      158,
+      140,
+      22
+     ],
+     "text": "beats 0.5 0.5 1 -2",
+     "numinlets": 2,
+     "numoutlets": 1,
+     "outlettype": [
+      ""
+     ]
+    }
+   },
+   {
+    "box": {
+     "id": "obj-11",
+     "maxclass": "message",
+     "patching_rect": [
+      386,
+      158,
+      84,
+      22
+     ],
+     "text": "beats 0.25",
+     "numinlets": 2,
+     "numoutlets": 1,
+     "outlettype": [
+      ""
+     ]
+    }
+   },
+   {
+    "box": {
+     "id": "obj-12",
+     "maxclass": "message",
+     "patching_rect": [
+      480,
+      158,
       112,
       22
      ],
@@ -178,10 +232,10 @@
    },
    {
     "box": {
-     "id": "obj-10",
+     "id": "obj-13",
      "maxclass": "message",
      "patching_rect": [
-      194,
+      602,
       158,
       154,
       22
@@ -196,82 +250,10 @@
    },
    {
     "box": {
-     "id": "obj-11",
-     "maxclass": "message",
-     "patching_rect": [
-      358,
-      158,
-      147,
-      22
-     ],
-     "text": "delta 0.5 0.25 0.25",
-     "numinlets": 2,
-     "numoutlets": 1,
-     "outlettype": [
-      ""
-     ]
-    }
-   },
-   {
-    "box": {
-     "id": "obj-12",
-     "maxclass": "message",
-     "patching_rect": [
-      515,
-      158,
-      84,
-      22
-     ],
-     "text": "delta 0.25",
-     "numinlets": 2,
-     "numoutlets": 1,
-     "outlettype": [
-      ""
-     ]
-    }
-   },
-   {
-    "box": {
-     "id": "obj-13",
-     "maxclass": "message",
-     "patching_rect": [
-      609,
-      158,
-      63,
-      22
-     ],
-     "text": "dur 0.2",
-     "numinlets": 2,
-     "numoutlets": 1,
-     "outlettype": [
-      ""
-     ]
-    }
-   },
-   {
-    "box": {
      "id": "obj-14",
      "maxclass": "message",
      "patching_rect": [
-      682,
-      158,
-      63,
-      22
-     ],
-     "text": "dur 0.9",
-     "numinlets": 2,
-     "numoutlets": 1,
-     "outlettype": [
-      ""
-     ]
-    }
-   },
-   {
-    "box": {
-     "id": "obj-15",
-     "maxclass": "message",
-     "patching_rect": [
-      755,
+      766,
       158,
       77,
       22
@@ -286,10 +268,10 @@
    },
    {
     "box": {
-     "id": "obj-16",
+     "id": "obj-15",
      "maxclass": "message",
      "patching_rect": [
-      842,
+      853,
       158,
       105,
       22
@@ -304,10 +286,82 @@
    },
    {
     "box": {
-     "id": "obj-17",
+     "id": "obj-16",
      "maxclass": "message",
      "patching_rect": [
       20,
+      188,
+      63,
+      22
+     ],
+     "text": "leg 0.3",
+     "numinlets": 2,
+     "numoutlets": 1,
+     "outlettype": [
+      ""
+     ]
+    }
+   },
+   {
+    "box": {
+     "id": "obj-17",
+     "maxclass": "message",
+     "patching_rect": [
+      93,
+      188,
+      49,
+      22
+     ],
+     "text": "leg 1",
+     "numinlets": 2,
+     "numoutlets": 1,
+     "outlettype": [
+      ""
+     ]
+    }
+   },
+   {
+    "box": {
+     "id": "obj-18",
+     "maxclass": "message",
+     "patching_rect": [
+      152,
+      188,
+      63,
+      22
+     ],
+     "text": "times 1",
+     "numinlets": 2,
+     "numoutlets": 1,
+     "outlettype": [
+      ""
+     ]
+    }
+   },
+   {
+    "box": {
+     "id": "obj-19",
+     "maxclass": "message",
+     "patching_rect": [
+      225,
+      188,
+      63,
+      22
+     ],
+     "text": "times 4",
+     "numinlets": 2,
+     "numoutlets": 1,
+     "outlettype": [
+      ""
+     ]
+    }
+   },
+   {
+    "box": {
+     "id": "obj-20",
+     "maxclass": "message",
+     "patching_rect": [
+      298,
       188,
       63,
       22
@@ -322,10 +376,10 @@
    },
    {
     "box": {
-     "id": "obj-18",
+     "id": "obj-21",
      "maxclass": "message",
      "patching_rect": [
-      93,
+      371,
       188,
       56,
       22
@@ -340,51 +394,15 @@
    },
    {
     "box": {
-     "id": "obj-19",
-     "maxclass": "message",
-     "patching_rect": [
-      159,
-      188,
-      70,
-      22
-     ],
-     "text": "notes 16",
-     "numinlets": 2,
-     "numoutlets": 1,
-     "outlettype": [
-      ""
-     ]
-    }
-   },
-   {
-    "box": {
-     "id": "obj-20",
-     "maxclass": "message",
-     "patching_rect": [
-      239,
-      188,
-      63,
-      22
-     ],
-     "text": "notes 8",
-     "numinlets": 2,
-     "numoutlets": 1,
-     "outlettype": [
-      ""
-     ]
-    }
-   },
-   {
-    "box": {
-     "id": "obj-21",
+     "id": "obj-22",
      "maxclass": "v8.codebox",
      "patching_rect": [
       20,
       238,
       600,
-      562
+      548
      ],
-     "code": "inlets = 1;\noutlets = 2;\n\nconst { Gesture } = require(\"Gesture\");\n\n// settings, changed by messages\nlet size = 8;\nlet pitches = [60, 62, 64, 65, 67];\nlet rhythm = [0.5, 0.25, 0.25];   // time between note starts, in beats\nlet lengths = [0.4];             // note lengths, in beats\nlet dynamics = [\"p\", \"mp\", \"mf\", \"f\"];\nlet tempo = 90;\n\nfunction play(events) {\n    for (const e of events) {\n        outlet(0, e.pitch, e.velocity, Math.round(e.durationSec * 1000), Math.round(e.startSec * 1000));\n    }\n}\n\nfunction bang() {\n    const g = Gesture.fromLists(size, {\n        startDeltas: rhythm,\n        durations: lengths,\n        pitches: pitches,\n        dynamics: dynamics,\n        timeUnit: \"beats\",\n        bpm: tempo,\n    });\n    play(g.toEvents());\n    outlet(1, Math.round(g.endTimeSec * 1000));   // total length in ms\n}\n\nfunction notes(n) { size = n; }\nfunction pitch(...values) { pitches = values; }\nfunction delta(...beats) { rhythm = beats; }\nfunction dur(...beats) { lengths = beats; }\nfunction dyn(...markings) { dynamics = markings; }\nfunction bpm(b) { tempo = b; }\n",
+     "code": "inlets = 1;\noutlets = 2;\n\nconst { Gesture } = require(\"Gesture\");\n\n// settings, changed by messages\nlet rhythm = [1, 0.5, 0.5, -1, 1];   // note values in beats, negative = rest\nlet pitches = [60, 62, 64, 65, 67];\nlet dynamics = [\"p\", \"mp\", \"mf\", \"f\"];\nlet legato = 0.9;                    // 1 = full length, 0.5 = staccato\nlet repeats = 2;\nlet tempo = 90;\n\nfunction play(events) {\n    for (const e of events) {\n        outlet(0, e.pitch, e.velocity, Math.round(e.durationSec * 1000), Math.round(e.startSec * 1000));\n    }\n}\n\nfunction bang() {\n    const g = Gesture.fromRhythm(rhythm, {\n        pitches: pitches,\n        dynamics: dynamics,\n        legato: legato,\n        repeats: repeats,\n        bpm: tempo,\n    });\n    play(g.toEvents());\n    outlet(1, Math.round(g.durationSec * 1000));   // total length in ms\n}\n\nfunction beats(...values) { rhythm = values; }\nfunction pitch(...values) { pitches = values; }\nfunction dyn(...markings) { dynamics = markings; }\nfunction leg(x) { legato = x; }\nfunction times(n) { repeats = n; }\nfunction bpm(b) { tempo = b; }\n",
      "filename": "none",
      "text": "",
      "numinlets": 1,
@@ -399,11 +417,11 @@
    },
    {
     "box": {
-     "id": "obj-22",
+     "id": "obj-23",
      "maxclass": "newobj",
      "patching_rect": [
       20,
-      825,
+      811,
       100,
       22
      ],
@@ -419,11 +437,11 @@
    },
    {
     "box": {
-     "id": "obj-23",
+     "id": "obj-24",
      "maxclass": "newobj",
      "patching_rect": [
       20,
-      865,
+      851,
       128,
       22
      ],
@@ -438,11 +456,11 @@
    },
    {
     "box": {
-     "id": "obj-24",
+     "id": "obj-25",
      "maxclass": "newobj",
      "patching_rect": [
       20,
-      905,
+      891,
       65,
       22
      ],
@@ -454,11 +472,11 @@
    },
    {
     "box": {
-     "id": "obj-25",
+     "id": "obj-26",
      "maxclass": "comment",
      "patching_rect": [
       150,
-      827,
+      813,
       360,
       22.0
      ],
@@ -469,11 +487,11 @@
    },
    {
     "box": {
-     "id": "obj-26",
+     "id": "obj-27",
      "maxclass": "button",
      "patching_rect": [
       350,
-      865,
+      851,
       24,
       24
      ],
@@ -487,11 +505,11 @@
    },
    {
     "box": {
-     "id": "obj-27",
+     "id": "obj-28",
      "maxclass": "newobj",
      "patching_rect": [
       350,
-      897,
+      883,
       51,
       22
      ],
@@ -506,11 +524,11 @@
    },
    {
     "box": {
-     "id": "obj-28",
+     "id": "obj-29",
      "maxclass": "message",
      "patching_rect": [
       350,
-      929,
+      915,
       42,
       22
      ],
@@ -524,11 +542,11 @@
    },
    {
     "box": {
-     "id": "obj-29",
+     "id": "obj-30",
      "maxclass": "message",
      "patching_rect": [
       400,
-      929,
+      915,
       49,
       22
      ],
@@ -542,11 +560,11 @@
    },
    {
     "box": {
-     "id": "obj-30",
+     "id": "obj-31",
      "maxclass": "comment",
      "patching_rect": [
       380,
-      867,
+      853,
       200,
       22.0
      ],
@@ -557,11 +575,11 @@
    },
    {
     "box": {
-     "id": "obj-31",
+     "id": "obj-32",
      "maxclass": "number",
      "patching_rect": [
       620,
-      825,
+      811,
       70,
       22
      ],
@@ -576,11 +594,11 @@
    },
    {
     "box": {
-     "id": "obj-32",
+     "id": "obj-33",
      "maxclass": "comment",
      "patching_rect": [
       695,
-      827,
+      813,
       140,
       22.0
      ],
@@ -610,7 +628,7 @@
       0
      ],
      "destination": [
-      "obj-21",
+      "obj-22",
       0
      ]
     }
@@ -622,7 +640,7 @@
       0
      ],
      "destination": [
-      "obj-21",
+      "obj-22",
       0
      ]
     }
@@ -634,7 +652,7 @@
       0
      ],
      "destination": [
-      "obj-21",
+      "obj-22",
       0
      ]
     }
@@ -646,7 +664,7 @@
       0
      ],
      "destination": [
-      "obj-21",
+      "obj-22",
       0
      ]
     }
@@ -658,7 +676,7 @@
       0
      ],
      "destination": [
-      "obj-21",
+      "obj-22",
       0
      ]
     }
@@ -670,7 +688,7 @@
       0
      ],
      "destination": [
-      "obj-21",
+      "obj-22",
       0
      ]
     }
@@ -682,7 +700,7 @@
       0
      ],
      "destination": [
-      "obj-21",
+      "obj-22",
       0
      ]
     }
@@ -694,7 +712,7 @@
       0
      ],
      "destination": [
-      "obj-21",
+      "obj-22",
       0
      ]
     }
@@ -706,7 +724,7 @@
       0
      ],
      "destination": [
-      "obj-21",
+      "obj-22",
       0
      ]
     }
@@ -718,7 +736,7 @@
       0
      ],
      "destination": [
-      "obj-21",
+      "obj-22",
       0
      ]
     }
@@ -730,7 +748,7 @@
       0
      ],
      "destination": [
-      "obj-21",
+      "obj-22",
       0
      ]
     }
@@ -742,7 +760,7 @@
       0
      ],
      "destination": [
-      "obj-21",
+      "obj-22",
       0
      ]
     }
@@ -754,7 +772,19 @@
       0
      ],
      "destination": [
+      "obj-22",
+      0
+     ]
+    }
+   },
+   {
+    "patchline": {
+     "source": [
       "obj-21",
+      0
+     ],
+     "destination": [
+      "obj-22",
       0
      ]
     }
@@ -766,18 +796,6 @@
       0
      ],
      "destination": [
-      "obj-21",
-      0
-     ]
-    }
-   },
-   {
-    "patchline": {
-     "source": [
-      "obj-21",
-      0
-     ],
-     "destination": [
       "obj-22",
       0
      ]
@@ -792,30 +810,6 @@
      "destination": [
       "obj-23",
       0
-     ]
-    }
-   },
-   {
-    "patchline": {
-     "source": [
-      "obj-22",
-      1
-     ],
-     "destination": [
-      "obj-23",
-      1
-     ]
-    }
-   },
-   {
-    "patchline": {
-     "source": [
-      "obj-22",
-      2
-     ],
-     "destination": [
-      "obj-23",
-      2
      ]
     }
    },
@@ -846,12 +840,36 @@
    {
     "patchline": {
      "source": [
-      "obj-26",
+      "obj-23",
+      2
+     ],
+     "destination": [
+      "obj-24",
+      2
+     ]
+    }
+   },
+   {
+    "patchline": {
+     "source": [
+      "obj-24",
       0
      ],
      "destination": [
-      "obj-27",
+      "obj-25",
       0
+     ]
+    }
+   },
+   {
+    "patchline": {
+     "source": [
+      "obj-24",
+      1
+     ],
+     "destination": [
+      "obj-25",
+      1
      ]
     }
    },
@@ -870,8 +888,8 @@
    {
     "patchline": {
      "source": [
-      "obj-27",
-      1
+      "obj-28",
+      0
      ],
      "destination": [
       "obj-29",
@@ -883,6 +901,30 @@
     "patchline": {
      "source": [
       "obj-28",
+      1
+     ],
+     "destination": [
+      "obj-30",
+      0
+     ]
+    }
+   },
+   {
+    "patchline": {
+     "source": [
+      "obj-29",
+      0
+     ],
+     "destination": [
+      "obj-24",
+      0
+     ]
+    }
+   },
+   {
+    "patchline": {
+     "source": [
+      "obj-30",
       0
      ],
      "destination": [
@@ -894,23 +936,11 @@
    {
     "patchline": {
      "source": [
-      "obj-29",
-      0
-     ],
-     "destination": [
       "obj-22",
-      0
-     ]
-    }
-   },
-   {
-    "patchline": {
-     "source": [
-      "obj-21",
       1
      ],
      "destination": [
-      "obj-31",
+      "obj-32",
       0
      ]
     }

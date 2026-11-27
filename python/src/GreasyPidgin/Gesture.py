@@ -10,6 +10,7 @@ Construction
 ------------
     Gesture(startTimeSec, phonons=[p1, p2], bpm=120)
     Gesture.fromLists(size=8, startDeltas=[0.5], durations=[1.0], ...)
+    Gesture.fromRhythm([1, 0.5, 0.5, -1, 1], pitches=[60, 62, 64], bpm=120)
     Gesture.fromMidiFile('/tmp/in.mid')
 """
 
@@ -345,6 +346,87 @@ class Gesture(TemporalObject):
             phonons.append(p)
 
         return cls(startSec, phonons=phonons, bpm=bpm, ticksPerBeat=ticksPerBeat)
+
+    @classmethod
+    def fromRhythm(
+        cls,
+        rhythm: list | float,
+        pitches: list = None,
+        dynamics: list | float = 64,
+        *,
+        legato: float = 1.0,
+        repeats: int = 1,
+        startOffset: float = 0.0,
+        timeUnit: str = 'beats',
+        pitchUnit: str = 'midi',
+        dynamicUnit: str = 'midi',
+        chordOrSeq: str = 'chord',
+        autoSortChords: bool = True,
+        bpm: float = 60.0,
+        ticksPerBeat: int = 480,
+        referenceA: float = 440,
+    ) -> "Gesture":
+        """
+        Build a Gesture from a rhythm: note values played one after another.
+
+        Each value is how long that note lasts (beats by default); a negative
+        value is a rest. Pitches and dynamics cycle over the sounding notes.
+
+            Gesture.fromRhythm([1, 0.5, 0.5, -1, 1], pitches=[60, 62, 64], bpm=120)
+            # quarter C, eighth D, eighth E, quarter rest, quarter C
+
+        legato scales the sounding length (1 = full value, 0.5 = staccato);
+        repeats plays the rhythm several times in a row. The Gesture lasts the
+        whole rhythm, trailing rests included.
+        """
+        raw = ensureList(rhythm)
+        try:
+            values = [float(v) for v in raw]
+        except (TypeError, ValueError):
+            values = []
+        if not values or any(v == 0 or v != v or abs(v) == float('inf') for v in values):
+            raise ValueError(
+                f"Gesture.fromRhythm: rhythm must be non-zero numbers (negative = rest), got {raw!r}"
+            )
+        if not isinstance(repeats, int) or repeats < 1:
+            raise ValueError(f"Gesture.fromRhythm: repeats must be an int >= 1, got {repeats!r}")
+        if not legato > 0:
+            raise ValueError(f"Gesture.fromRhythm: legato must be > 0, got {legato!r}")
+        pitches = ensureList(pitches if pitches is not None else [60])
+        dynamics = ensureList(dynamics)
+        if not pitches or not dynamics:
+            raise ValueError("Gesture.fromRhythm: pitches and dynamics must not be empty")
+
+        def toSec(v):
+            return beatToSec(v, bpm) if timeUnit in ('beats', 'b') else float(v)
+
+        phonons: list[Phonon] = []
+        start, n = 0.0, 0
+        for _ in range(repeats):
+            for v in values:
+                if v > 0:
+                    dynamic = dynamics[n % len(dynamics)]
+                    if not isinstance(dynamic, (str, Envelope, list, tuple)):
+                        dynamic = float(dynamic)
+                    phonons.append(Phonon(
+                        startTime=start,
+                        duration=v * legato,
+                        pitch=ensureList(pitches[n % len(pitches)]),
+                        dynamic=dynamic,
+                        bpm=bpm,
+                        timeUnit=timeUnit,
+                        pitchUnit=pitchUnit,
+                        dynamicUnit=dynamicUnit,
+                        chordOrSeq=chordOrSeq,
+                        autoSortChords=autoSortChords,
+                        ticksPerBeat=ticksPerBeat,
+                        referenceA=referenceA,
+                    ))
+                    n += 1
+                start += abs(v)
+
+        return cls(toSec(startOffset), phonons=phonons, durationSec=toSec(start),
+                   bpm=bpm, ticksPerBeat=ticksPerBeat)
 
     # ------------------------------------------------------------------
     # Factory: from MIDI file
