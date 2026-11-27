@@ -12,11 +12,15 @@ Runs in Max 9 [v8] and in Node.
     const g = Gesture.fromLists(8, { startDeltas: [0.5, 0.25], pitches: [60, 62, [64, 67]], dynamics: ["p", "mf-ff"] });
     g.toEvents();   // [{ startSec, durationSec, pitch, bend, velocity, ... }, ...]
 
+    // or think in note values (beats); negative = rest
+    const r = Gesture.fromRhythm([1, 0.5, 0.5, -1, 1], { pitches: [60, 62, 64], bpm: 120 });
+
 Differences from the Python version
 -----------------------------------
 - fromLists(size, options) takes every other parameter as an option.
 - quantiseTime(grid, parentalStartSec = 0, durationThresholdSec = 0.001).
 - No fromMidiFile() and no file exporters; toEvents() gives the playable notes.
+- fromRhythm(rhythm, options) is JS-only: note values instead of start deltas.
 */
 
 // Max finds modules by name on its search path and returns an empty object (no error) when it
@@ -128,6 +132,50 @@ class Gesture extends TemporalObject {
                 { timeUnit, pitchUnit, dynamicUnit, chordOrSeq, autoSortChords, ticksPerBeat, referenceA }));
         }
         return new Gesture(startSec, phonons, 0, { bpm, ticksPerBeat });
+    }
+
+    /**
+     * Build a Gesture from a rhythm: a list of note values played one after another.
+     * Each value is how long that note lasts (in beats by default); a negative value is a rest.
+     * Pitches and dynamics cycle over the sounding notes, so they can have any length.
+     *
+     *   Gesture.fromRhythm([1, 0.5, 0.5, -1, 1], { pitches: [60, 62, 64], bpm: 120 })
+     *   -> quarter C, eighth D, eighth E, quarter rest, quarter C
+     *
+     * legato scales the sounding length (1 = full value, 0.5 = staccato);
+     * repeats plays the rhythm several times in a row.
+     */
+    static fromRhythm(rhythm, {
+        pitches = [60], dynamics = 64, legato = 1, repeats = 1, startOffset = 0,
+        timeUnit = "beats", pitchUnit = "midi", dynamicUnit = "midi", chordOrSeq = "chord",
+        autoSortChords = true, bpm = 60, ticksPerBeat = 480, referenceA = 440,
+    } = {}) {
+        const values = asList(rhythm).map(Number);
+        if (!values.length || values.some(v => !Number.isFinite(v) || v === 0)) {
+            throw new RangeError(`Gesture.fromRhythm: rhythm must be non-zero numbers (negative = rest), got [${asList(rhythm)}]`);
+        }
+        if (!Number.isInteger(repeats) || repeats < 1) throw new RangeError(`Gesture.fromRhythm: repeats must be an int >= 1, got ${repeats}`);
+        if (!(legato > 0)) throw new RangeError(`Gesture.fromRhythm: legato must be > 0, got ${legato}`);
+        const p = asList(pitches), dyn = asList(dynamics);
+        if (!p.length || !dyn.length) throw new Error("Gesture.fromRhythm: pitches and dynamics must not be empty");
+        const toSec = v => (timeUnit === "beats" || timeUnit === "b" ? v * 60 / bpm : v);
+
+        const phonons = [];
+        let start = 0, n = 0;
+        for (let r = 0; r < repeats; r++) {
+            for (const v of values) {
+                if (v > 0) {
+                    const d = dyn[n % dyn.length];
+                    phonons.push(new Phonon(start, v * legato, asList(p[n % p.length]),
+                        typeof d === "string" || d instanceof Envelope || Array.isArray(d) ? d : Number(d), bpm,
+                        { timeUnit, pitchUnit, dynamicUnit, chordOrSeq, autoSortChords, ticksPerBeat, referenceA }));
+                    n++;
+                }
+                start += Math.abs(v);
+            }
+        }
+        // the Gesture lasts the whole rhythm, trailing rests included
+        return new Gesture(toSec(startOffset), phonons, toSec(start), { bpm, ticksPerBeat });
     }
 
     toString() {
