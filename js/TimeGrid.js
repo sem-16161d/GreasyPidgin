@@ -8,7 +8,7 @@ RQQ is a hierarchical rhythm notation; Rest (or R) marks silent parts.
     Max:   var T = require("TimeGrid");   T.TimeGrid.fromEuclidean(5, 8, 0, { durationBeats: 4, bpm: 120 })
     Node:  const { TimeGrid, RQQ, R } = require("./TimeGrid");
 
-    TimeGrid.fromRQQ(new RQQ(4, [1, 1, R(1), 2]), { bpm: 90 }).sorted();   // [0, 0.667, 2]
+    TimeGrid.fromRQQ(new RQQ(4, [1, 1, R(1), 1]), { bpm: 90 }).sorted();   // [0, 0.667, 2]
 
 Differences from the Python version: keyword arguments become an options
 object; Rest is an object (R(1) / new Rest(1)), not a float subclass; no
@@ -113,7 +113,7 @@ function flattenRQQ(r) {
 /**
  * Rhythm Quantisation Quotient: divides durationBeats into proportional parts.
  * A nested RQQ weighs as much as its own duration and keeps its subdivisions.
- *   new RQQ(4, [1, 1, R(1), 2])            quarter, quarter, rest, half
+ *   new RQQ(4, [1, 1, R(1), 1])            quarter, quarter, quarter rest, quarter
  *   new RQQ(4, [1, new RQQ(1, [1,1,1]), 1, 1])   triplets in beat 2
  */
 class RQQ {

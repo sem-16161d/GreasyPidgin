@@ -8,7 +8,7 @@ dynamicStepdB apart below maxdB, with a MIDI velocity for each marking.
     Node:  const { DynamicGrid } = require("./DynamicGrid");
 
     const dg = new DynamicGrid();
-    dg.dynamicMapping.mf;        // { velMidi: 87, db: 85 }
+    dg.dynamicMapping.mf;        // { velMidi: 75, db: 85 }
 */
 
 // Max finds modules by name on its search path and returns an empty object (no error) when it

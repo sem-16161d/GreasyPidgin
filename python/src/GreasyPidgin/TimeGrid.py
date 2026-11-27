@@ -193,7 +193,7 @@ class RQQ:
 
     Example
     -------
-    >>> RQQ(4, [1, 1, Rest(1), 2])          # 4 beats: quarter, quarter, rest, half
+    >>> RQQ(4, [1, 1, Rest(1), 1])          # 4 beats: quarter, quarter, quarter rest, quarter
     >>> RQQ(4, [1, RQQ(1, [1,1,1]), 1, 1]) # triplet subdivision in beat 2
     """
 
